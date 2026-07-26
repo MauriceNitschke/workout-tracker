@@ -84,19 +84,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
   return (
     <div className="space-y-8 pb-12">
       {/* Header Banner */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-zinc-900 border border-zinc-800 rounded-2xl p-4 sm:p-6">
         <div>
           <div className="flex items-center space-x-2 text-zinc-400 text-xs font-mono uppercase tracking-wider mb-1">
             <span>ACTIVE PROGRAM</span>
             <span>•</span>
-            <span className="text-emerald-400 font-semibold">
+            <span className="text-emerald-400 font-semibold truncate">
               {state.programs[0]?.name || 'Summer Hypertrophy 2026'}
             </span>
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-zinc-100">
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-zinc-100">
             Training Dashboard
           </h1>
-          <p className="text-sm text-zinc-400 mt-1 max-w-2xl">
+          <p className="text-xs sm:text-sm text-zinc-400 mt-1 max-w-2xl">
             Focus on execution and consistency. Every workout is planned in advance, executed with precision, and manually progressed.
           </p>
         </div>
@@ -104,7 +104,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         <div className="flex items-center space-x-3 shrink-0">
           <button
             onClick={() => onNavigateTab('planner')}
-            className="flex items-center space-x-2 px-4 py-2.5 text-xs font-mono font-medium rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 transition"
+            className="w-full sm:w-auto flex items-center justify-center space-x-2 px-4 py-2.5 text-xs font-mono font-medium rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 transition"
           >
             <Calendar className="w-4 h-4 text-zinc-400" />
             <span>PLAN NEXT WEEK</span>
@@ -113,24 +113,24 @@ export const Dashboard: React.FC<DashboardProps> = ({
       </div>
 
       {/* Primary KPI Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {/* KPI 1: Consistency (Primary KPI) */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 relative overflow-hidden">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 relative overflow-hidden">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-mono text-zinc-400 uppercase tracking-wider">
-              PRIMARY KPI: CONSISTENCY
+            <span className="text-[10px] sm:text-xs font-mono text-zinc-400 uppercase tracking-wider truncate">
+              CONSISTENCY
             </span>
-            <Flame className="w-4 h-4 text-amber-400" />
+            <Flame className="w-4 h-4 text-amber-400 shrink-0" />
           </div>
-          <div className="mt-3 flex items-baseline space-x-2">
-            <span className="text-3xl font-extrabold text-zinc-100 font-mono">
+          <div className="mt-2 flex items-baseline space-x-1.5">
+            <span className="text-2xl sm:text-3xl font-extrabold text-zinc-100 font-mono">
               {consistency.percentage}%
             </span>
-            <span className="text-xs text-zinc-400">workout completion</span>
+            <span className="text-[10px] sm:text-xs text-zinc-400 truncate">completion</span>
           </div>
-          <div className="mt-3 text-xs text-zinc-400 flex items-center justify-between font-mono">
-            <span>Completed: {consistency.totalCompleted}</span>
-            <span>Planned: {consistency.totalPlanned}</span>
+          <div className="mt-2 text-[10px] sm:text-xs text-zinc-400 flex items-center justify-between font-mono">
+            <span>Done: {consistency.totalCompleted}</span>
+            <span>Plan: {consistency.totalPlanned}</span>
           </div>
           <div className="mt-2 w-full bg-zinc-800 rounded-full h-1.5 overflow-hidden">
             <div
@@ -141,21 +141,21 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
 
         {/* KPI 2: Active Week */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-mono text-zinc-400 uppercase tracking-wider">
+            <span className="text-[10px] sm:text-xs font-mono text-zinc-400 uppercase tracking-wider truncate">
               CURRENT WEEK
             </span>
-            <Calendar className="w-4 h-4 text-blue-400" />
+            <Calendar className="w-4 h-4 text-blue-400 shrink-0" />
           </div>
-          <div className="mt-3 flex items-baseline space-x-2">
-            <span className="text-3xl font-extrabold text-zinc-100 font-mono">
-              Week {currentWeek?.isoWeek || 'N/A'}
+          <div className="mt-2 flex items-baseline space-x-2">
+            <span className="text-2xl sm:text-3xl font-extrabold text-zinc-100 font-mono">
+              W{currentWeek?.isoWeek || 'N/A'}
             </span>
           </div>
-          <div className="mt-3 flex items-center space-x-2">
+          <div className="mt-2 flex items-center space-x-1.5">
             <span
-              className={`px-2 py-0.5 text-[10px] font-mono uppercase font-semibold rounded border ${
+              className={`px-1.5 py-0.5 text-[9px] sm:text-[10px] font-mono uppercase font-semibold rounded border ${
                 currentWeek?.status === 'Locked'
                   ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
                   : currentWeek?.status === 'In Progress'
@@ -163,7 +163,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   : 'bg-blue-500/10 text-blue-400 border-blue-500/30'
               }`}
             >
-              Status: {currentWeek?.status}
+              {currentWeek?.status}
             </span>
             {currentWeek?.status === 'Locked' && (
               <Lock className="w-3.5 h-3.5 text-amber-400" />
@@ -172,34 +172,31 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
 
         {/* KPI 3: Personal Records */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-mono text-zinc-400 uppercase tracking-wider">
-              PERSONAL RECORDS
+            <span className="text-[10px] sm:text-xs font-mono text-zinc-400 uppercase tracking-wider truncate">
+              PRs TRACKED
             </span>
-            <Award className="w-4 h-4 text-purple-400" />
+            <Award className="w-4 h-4 text-purple-400 shrink-0" />
           </div>
-          <div className="mt-3 flex items-baseline space-x-2">
-            <span className="text-3xl font-extrabold text-zinc-100 font-mono">
+          <div className="mt-2 flex items-baseline space-x-1.5">
+            <span className="text-2xl sm:text-3xl font-extrabold text-zinc-100 font-mono">
               {prEntries.length}
             </span>
-            <span className="text-xs text-zinc-400">tracked PRs</span>
+            <span className="text-[10px] sm:text-xs text-zinc-400">PRs</span>
           </div>
-          <p className="mt-3 text-xs text-zinc-400 truncate">
-            Top PR: {prEntries[0] ? prEntries[0].formattedValue : 'None yet'}
+          <p className="mt-2 text-[10px] sm:text-xs text-zinc-400 truncate">
+            Top: {prEntries[0] ? prEntries[0].formattedValue : 'None'}
           </p>
         </div>
 
         {/* KPI 4: Workout Mode Action */}
-        <div className="bg-gradient-to-br from-zinc-900 to-zinc-950 border border-zinc-800 rounded-xl p-5 flex flex-col justify-between">
+        <div className="col-span-2 sm:col-span-1 bg-gradient-to-br from-zinc-900 to-zinc-950 border border-zinc-800 rounded-2xl p-4 flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-mono text-zinc-400 uppercase tracking-wider">
-              WORKOUT MODE
+            <span className="text-[10px] sm:text-xs font-mono text-zinc-400 uppercase tracking-wider">
+              QUICK EXECUTION
             </span>
             <Dumbbell className="w-4 h-4 text-emerald-400" />
-          </div>
-          <div className="my-2">
-            <p className="text-xs text-zinc-400">Zero distraction execution player.</p>
           </div>
           <button
             onClick={() => {
@@ -210,10 +207,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 onNavigateTab('planner');
               }
             }}
-            className="w-full flex items-center justify-center space-x-2 py-2 px-3 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-mono text-xs font-bold transition shadow-lg shadow-emerald-500/10"
+            className="w-full mt-3 flex items-center justify-center space-x-2 py-2.5 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-mono text-xs font-bold transition shadow-lg shadow-emerald-500/10 active:scale-95"
           >
             <Play className="w-3.5 h-3.5 fill-current" />
-            <span>
+            <span className="truncate">
               {currentWorkouts.some((sw) => sw.status === 'Started')
                 ? 'CONTINUE WORKOUT'
                 : 'START TODAY\'S WORKOUT'}
@@ -221,6 +218,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </button>
         </div>
       </div>
+
 
       {/* Main Grid: Current Week Schedule + Volume Trend */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

@@ -841,8 +841,8 @@ export const WeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
                 </button>
               </div>
 
-              {/* Workout Details (Title, Week, Notes) */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs font-mono">
+              {/* Workout Details (Title, Week, Date, Notes) */}
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs font-mono">
                 <div className="space-y-1">
                   <label className="text-zinc-400 uppercase font-bold text-[10px]">Workout Title</label>
                   <input
@@ -856,7 +856,7 @@ export const WeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-zinc-400 uppercase font-bold text-[10px]">Target Training Week</label>
+                  <label className="text-zinc-400 uppercase font-bold text-[10px]">Target Week</label>
                   <select
                     value={editingWorkout.weekId}
                     onChange={(e) =>
@@ -873,6 +873,18 @@ export const WeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
                 </div>
 
                 <div className="space-y-1">
+                  <label className="text-zinc-400 uppercase font-bold text-[10px]">Scheduled Date</label>
+                  <input
+                    type="date"
+                    value={editingWorkout.date || ''}
+                    onChange={(e) =>
+                      setEditingWorkout({ ...editingWorkout, date: e.target.value })
+                    }
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-emerald-400 focus:outline-none focus:border-emerald-500 font-bold"
+                  />
+                </div>
+
+                <div className="space-y-1">
                   <label className="text-zinc-400 uppercase font-bold text-[10px]">Session Notes / Focus</label>
                   <input
                     type="text"
@@ -885,6 +897,7 @@ export const WeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
                   />
                 </div>
               </div>
+
 
               {/* Planned Exercises Header */}
               <div className="space-y-4 pt-1">

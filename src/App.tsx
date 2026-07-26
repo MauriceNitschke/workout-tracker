@@ -4,8 +4,10 @@ import {
   exportAppStateJSON,
   loadAppState,
   resetAppStateToSeed,
+  clearAppStateToCleanSlate,
   saveAppState,
 } from './lib/storage';
+
 import { Navigation } from './components/Navigation';
 import { Dashboard } from './components/Dashboard';
 import { WeeklyPlanner } from './components/WeeklyPlanner';
@@ -94,6 +96,13 @@ export default function App() {
     setState(seed);
   };
 
+  // Handle clean slate
+  const handleClearCleanSlate = () => {
+    const clean = clearAppStateToCleanSlate();
+    setState(clean);
+  };
+
+
   // Handle importing custom JSON backup
   const handleImportData = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -124,9 +133,11 @@ export default function App() {
         setCurrentTab={setCurrentTab}
         state={state}
         onResetSeed={handleResetSeed}
+        onClearCleanSlate={handleClearCleanSlate}
         onExportData={() => exportAppStateJSON(state)}
         onImportData={handleImportData}
       />
+
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-28 md:pb-12">
         {currentTab === 'dashboard' && (

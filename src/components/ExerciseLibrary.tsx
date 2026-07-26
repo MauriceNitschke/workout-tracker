@@ -149,6 +149,99 @@ export const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
     });
   };
 
+  // Add set to template exercise
+  const handleAddSetToTemplateExercise = (peIdx: number) => {
+    if (!editingTemplate) return;
+    const pe = editingTemplate.plannedExercises[peIdx];
+    if (!pe) return;
+
+    const lastSet = pe.plannedSets[pe.plannedSets.length - 1];
+    const newSet: PlannedSet = {
+      setNumber: pe.plannedSets.length + 1,
+      plannedReps: lastSet ? lastSet.plannedReps : 8,
+      plannedWeight: lastSet ? lastSet.plannedWeight : 60,
+    };
+
+    const updatedPes = [...editingTemplate.plannedExercises];
+    updatedPes[peIdx] = {
+      ...pe,
+      plannedSets: [...pe.plannedSets, newSet],
+    };
+
+    setEditingTemplate({
+      ...editingTemplate,
+      plannedExercises: updatedPes,
+    });
+  };
+
+  // Remove set from template exercise
+  const handleRemoveSetFromTemplateExercise = (peIdx: number, setIdx: number) => {
+    if (!editingTemplate) return;
+    const pe = editingTemplate.plannedExercises[peIdx];
+    if (!pe) return;
+
+    const newSets = pe.plannedSets
+      .filter((_, idx) => idx !== setIdx)
+      .map((s, idx) => ({ ...s, setNumber: idx + 1 }));
+
+    const updatedPes = [...editingTemplate.plannedExercises];
+    updatedPes[peIdx] = {
+      ...pe,
+      plannedSets: newSets,
+    };
+
+    setEditingTemplate({
+      ...editingTemplate,
+      plannedExercises: updatedPes,
+    });
+  };
+
+  // Update set details in template exercise
+  const handleUpdateTemplateSetDetails = (
+    peIdx: number,
+    setIdx: number,
+    field: 'plannedReps' | 'plannedWeight',
+    val: number
+  ) => {
+    if (!editingTemplate) return;
+    const pe = editingTemplate.plannedExercises[peIdx];
+    if (!pe) return;
+
+    const newSets = pe.plannedSets.map((s, idx) => {
+      if (idx !== setIdx) return s;
+      return { ...s, [field]: val };
+    });
+
+    const updatedPes = [...editingTemplate.plannedExercises];
+    updatedPes[peIdx] = {
+      ...pe,
+      plannedSets: newSets,
+    };
+
+    setEditingTemplate({
+      ...editingTemplate,
+      plannedExercises: updatedPes,
+    });
+  };
+
+  // Reorder template exercise
+  const handleReorderTemplateExercise = (index: number, direction: 'up' | 'down') => {
+    if (!editingTemplate) return;
+    const items = [...editingTemplate.plannedExercises];
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= items.length) return;
+
+    const [moved] = items.splice(index, 1);
+    items.splice(targetIndex, 0, moved);
+
+    const reordered = items.map((item, idx) => ({ ...item, order: idx + 1 }));
+    setEditingTemplate({
+      ...editingTemplate,
+      plannedExercises: reordered,
+    });
+  };
+
+
   // Filter exercises
   const filteredExercises = state.exercises.filter((e) => {
     const matchesSearch =
@@ -546,40 +639,146 @@ export const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                     </button>
                   </div>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     {editingTemplate.plannedExercises.map((pe, peIdx) => {
                       const ex = state.exercises.find((e) => e.id === pe.exerciseId);
                       return (
                         <div
                           key={pe.id}
-                          className="p-3 bg-zinc-950 border border-zinc-800 rounded-2xl space-y-2 text-xs font-mono"
+                          className="p-3.5 bg-zinc-950 border border-zinc-800 rounded-2xl space-y-3 text-xs font-mono shadow-inner"
                         >
-                          <div className="flex items-center justify-between">
+                          {/* Exercise Header */}
+                          <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
                             <div className="flex items-center space-x-2">
                               <span className="text-zinc-500 font-bold bg-zinc-900 px-2 py-0.5 rounded">
                                 #{peIdx + 1}
                               </span>
-                              <span className="font-bold text-zinc-100">{ex?.name || 'Exercise'}</span>
+                              <span className="font-bold text-zinc-100 text-sm">{ex?.name || 'Exercise'}</span>
+                              {ex?.equipment && (
+                                <span className="text-[10px] text-zinc-400 bg-zinc-900 px-1.5 py-0.5 rounded">
+                                  {ex.equipment}
+                                </span>
+                              )}
                             </div>
-                            <button
-                              onClick={() => handleRemoveExerciseFromTemplate(pe.id)}
-                              className="p-1 rounded text-rose-400 hover:bg-rose-950/40"
-                              title="Remove"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+
+                            <div className="flex items-center space-x-1">
+                              <button
+                                disabled={peIdx === 0}
+                                onClick={() => handleReorderTemplateExercise(peIdx, 'up')}
+                                className="p-1.5 rounded-lg bg-zinc-900 text-zinc-400 hover:text-zinc-200 disabled:opacity-30"
+                                title="Move Up"
+                              >
+                                <ArrowUp className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                disabled={peIdx === editingTemplate.plannedExercises.length - 1}
+                                onClick={() => handleReorderTemplateExercise(peIdx, 'down')}
+                                className="p-1.5 rounded-lg bg-zinc-900 text-zinc-400 hover:text-zinc-200 disabled:opacity-30"
+                                title="Move Down"
+                              >
+                                <ArrowDown className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleRemoveExerciseFromTemplate(pe.id)}
+                                className="p-1.5 rounded-lg bg-rose-950/40 text-rose-400 hover:bg-rose-900/60 transition ml-1"
+                                title="Remove Exercise"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </div>
 
-                          <div className="text-[11px] text-zinc-400 flex items-center justify-between bg-zinc-900/60 p-2 rounded-xl">
-                            <span>Default Sets: {pe.plannedSets.length}</span>
-                            <span className="text-emerald-400 font-bold">
-                              {pe.plannedSets[0]?.plannedReps || 8} reps @ {pe.plannedSets[0]?.plannedWeight || 60} kg
-                            </span>
+                          {/* Sets List Editor */}
+                          <div className="space-y-2">
+                            <div className="hidden sm:grid grid-cols-[50px_1fr_1fr_40px] gap-2 text-[10px] font-mono uppercase text-zinc-500 font-bold px-1">
+                              <span>SET</span>
+                              <span>START REPS</span>
+                              <span>START WEIGHT (KG)</span>
+                              <span></span>
+                            </div>
+
+                            {pe.plannedSets.map((s, sIdx) => (
+                              <div
+                                key={sIdx}
+                                className="flex flex-col sm:grid sm:grid-cols-[50px_1fr_1fr_40px] gap-2 sm:items-center text-xs font-mono bg-zinc-900/60 sm:bg-transparent p-2 sm:p-0 rounded-xl border sm:border-none border-zinc-800"
+                              >
+                                <div className="flex items-center justify-between sm:justify-start">
+                                  <span className="text-zinc-400 font-bold sm:px-1">
+                                    Set #{s.setNumber}
+                                  </span>
+                                  <button
+                                    onClick={() => handleRemoveSetFromTemplateExercise(peIdx, sIdx)}
+                                    className="sm:hidden p-1 text-zinc-500 hover:text-rose-400"
+                                    title="Delete Set"
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </button>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2 sm:col-span-2">
+                                  <div>
+                                    <span className="sm:hidden text-[10px] text-zinc-500 uppercase font-bold block mb-1">
+                                      Start Reps
+                                    </span>
+                                    <input
+                                      type="number"
+                                      value={s.plannedReps}
+                                      onChange={(e) =>
+                                        handleUpdateTemplateSetDetails(
+                                          peIdx,
+                                          sIdx,
+                                          'plannedReps',
+                                          Number(e.target.value)
+                                        )
+                                      }
+                                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2 text-zinc-100 text-center font-mono font-bold focus:border-emerald-500"
+                                    />
+                                  </div>
+
+                                  <div>
+                                    <span className="sm:hidden text-[10px] text-zinc-500 uppercase font-bold block mb-1">
+                                      Start Weight (kg)
+                                    </span>
+                                    <input
+                                      type="number"
+                                      step="0.5"
+                                      value={s.plannedWeight}
+                                      onChange={(e) =>
+                                        handleUpdateTemplateSetDetails(
+                                          peIdx,
+                                          sIdx,
+                                          'plannedWeight',
+                                          Number(e.target.value)
+                                        )
+                                      }
+                                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2 text-emerald-400 text-center font-mono font-bold focus:border-emerald-500"
+                                    />
+                                  </div>
+                                </div>
+
+                                <button
+                                  onClick={() => handleRemoveSetFromTemplateExercise(peIdx, sIdx)}
+                                  className="hidden sm:flex items-center justify-center p-1.5 text-zinc-500 hover:text-rose-400 transition"
+                                  title="Delete Set"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              </div>
+                            ))}
+
+                            <button
+                              onClick={() => handleAddSetToTemplateExercise(peIdx)}
+                              className="mt-2 text-xs font-mono font-bold text-emerald-400 hover:text-emerald-300 flex items-center space-x-1.5 p-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 transition active:scale-95"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              <span>Add Set to Template</span>
+                            </button>
                           </div>
                         </div>
                       );
                     })}
                   </div>
+
                 )}
               </div>
             </div>

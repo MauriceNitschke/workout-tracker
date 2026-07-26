@@ -128,34 +128,34 @@ export const WeeklyReviewView: React.FC<WeeklyReviewViewProps> = ({ state }) => 
         </p>
 
         {/* Section Tabs */}
-        <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-zinc-800/80">
+        <div className="flex items-center space-x-2 pt-3 border-t border-zinc-800/80 overflow-x-auto max-w-full pb-1">
           <button
             onClick={() => setActiveSection('review')}
-            className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-mono font-bold transition ${
+            className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl text-xs font-mono font-bold transition shrink-0 ${
               activeSection === 'review'
                 ? 'bg-zinc-800 text-zinc-100 border border-zinc-700 shadow-sm'
                 : 'bg-zinc-950 text-zinc-400 border border-zinc-800 hover:border-zinc-700'
             }`}
           >
             <FileText className="w-4 h-4 text-emerald-400" />
-            <span>Weekly Planned vs Actual</span>
+            <span>Planned vs Actual</span>
           </button>
 
           <button
             onClick={() => setActiveSection('muscle-volume')}
-            className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-mono font-bold transition ${
+            className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl text-xs font-mono font-bold transition shrink-0 ${
               activeSection === 'muscle-volume'
                 ? 'bg-zinc-800 text-zinc-100 border border-zinc-700 shadow-sm'
                 : 'bg-zinc-950 text-zinc-400 border border-zinc-800 hover:border-zinc-700'
             }`}
           >
             <Layers className="w-4 h-4 text-purple-400" />
-            <span>Muscle Volume & Heatmap</span>
+            <span>Muscle Heatmap</span>
           </button>
 
           <button
             onClick={() => setActiveSection('strength-progress')}
-            className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-mono font-bold transition ${
+            className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl text-xs font-mono font-bold transition shrink-0 ${
               activeSection === 'strength-progress'
                 ? 'bg-zinc-800 text-zinc-100 border border-zinc-700 shadow-sm'
                 : 'bg-zinc-950 text-zinc-400 border border-zinc-800 hover:border-zinc-700'
@@ -171,22 +171,39 @@ export const WeeklyReviewView: React.FC<WeeklyReviewViewProps> = ({ state }) => 
       {activeSection === 'review' && (
         <div className="space-y-6">
           {/* Week Selector */}
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 flex items-center space-x-2 overflow-x-auto">
-            <span className="text-xs font-mono text-zinc-500 uppercase mr-2 shrink-0">Select Week:</span>
-            {state.weeks.map((w) => (
-              <button
-                key={w.id}
-                onClick={() => setSelectedWeekId(w.id)}
-                className={`px-3.5 py-2 rounded-xl text-xs font-mono font-medium transition shrink-0 ${
-                  selectedWeek?.id === w.id
-                    ? 'bg-zinc-800 text-zinc-100 border border-zinc-700 shadow-sm font-bold'
-                    : 'bg-zinc-950 text-zinc-400 border border-zinc-800 hover:border-zinc-700'
-                }`}
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-mono text-zinc-400 uppercase font-bold shrink-0">Select Week:</span>
+              <select
+                value={selectedWeek?.id}
+                onChange={(e) => setSelectedWeekId(e.target.value)}
+                className="sm:hidden bg-zinc-950 border border-zinc-800 text-emerald-400 text-xs font-mono font-bold rounded-xl px-3 py-2 focus:outline-none"
               >
-                W{w.isoWeek} ({w.status})
-              </button>
-            ))}
+                {state.weeks.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    Week {w.isoWeek} ({w.status})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="hidden sm:flex items-center space-x-2 overflow-x-auto max-w-full pb-1">
+              {state.weeks.map((w) => (
+                <button
+                  key={w.id}
+                  onClick={() => setSelectedWeekId(w.id)}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-mono font-medium transition shrink-0 ${
+                    selectedWeek?.id === w.id
+                      ? 'bg-zinc-800 text-zinc-100 border border-zinc-700 shadow-sm font-bold'
+                      : 'bg-zinc-950 text-zinc-400 border border-zinc-800 hover:border-zinc-700'
+                  }`}
+                >
+                  W{w.isoWeek} ({w.status})
+                </button>
+              ))}
+            </div>
           </div>
+
 
           {/* Review Metrics Summary Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

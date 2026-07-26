@@ -87,12 +87,14 @@ export const LifeInWeeksView: React.FC<LifeInWeeksViewProps> = ({
               <span>•</span>
               <span className="text-emerald-400 font-semibold">DAY-BY-DAY MONTHLY MATRIX</span>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-100">
-              Life in Weeks Training Log
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-100 flex items-center space-x-2">
+              <Flame className="w-7 h-7 text-emerald-400 inline shrink-0" />
+              <span>Streak Tracker Training Log</span>
             </h1>
             <p className="text-sm text-zinc-400 mt-1 max-w-2xl leading-relaxed">
-              Every tile represents one calendar day grouped into monthly rows. Subtle gaps after Sundays highlight weekly training rhythms while preserving precision day-level tracking.
+              Every tile represents one calendar day mapped to your scheduled and logged workouts. Click any day to inspect workout executions, planned sessions, and recovery logs.
             </p>
+
           </div>
 
           <div className="flex flex-wrap items-center gap-2 shrink-0">

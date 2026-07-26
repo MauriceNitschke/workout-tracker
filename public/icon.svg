@@ -1,7 +1,42 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
-  <rect width="512" height="512" rx="112" fill="#09090b"/>
-  <rect x="32" y="32" width="448" height="448" rx="80" fill="none" stroke="#27272a" stroke-width="12"/>
-  <path d="M160 256h192M256 160v192" stroke="#10b981" stroke-width="32" stroke-linecap="round"/>
-  <circle cx="256" cy="256" r="140" fill="none" stroke="#3f3f46" stroke-width="16"/>
-  <circle cx="256" cy="256" r="80" fill="none" stroke="#10b981" stroke-width="8" stroke-dasharray="12 12"/>
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#09090b"/>
+      <stop offset="100%" stop-color="#18181b"/>
+    </linearGradient>
+    <linearGradient id="emGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34d399"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Outer Rounded Square Container -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)"/>
+  <rect x="24" y="24" width="464" height="464" rx="96" fill="none" stroke="#27272a" stroke-width="8"/>
+  <rect x="40" y="40" width="432" height="432" rx="80" fill="none" stroke="#10b981" stroke-width="3" stroke-opacity="0.3"/>
+
+  <!-- Flexing Biceps Vector Path -->
+  <g transform="translate(40, 20)">
+    <!-- Dumbbell Bar behind -->
+    <rect x="70" y="270" width="292" height="24" rx="8" fill="#3f3f46" transform="rotate(-15 216 282)"/>
+    <!-- Weights -->
+    <rect x="60" y="230" width="30" height="100" rx="10" fill="#10b981" transform="rotate(-15 75 280)"/>
+    <rect x="340" y="230" width="30" height="100" rx="10" fill="#10b981" transform="rotate(-15 355 280)"/>
+
+    <!-- Flexed Biceps Muscle Outline -->
+    <path d="M 120 320 
+             C 120 320, 150 210, 215 190 
+             C 240 182, 270 200, 290 230 
+             C 320 220, 360 250, 370 290 
+             C 380 330, 350 370, 300 375 
+             C 240 380, 160 380, 120 320 Z" 
+          fill="url(#emGrad)" 
+          stroke="#059669" 
+          stroke-width="6"/>
+
+    <!-- Peak Muscle Definition / Vein Accent Line -->
+    <path d="M 190 220 C 230 205, 260 240, 280 270" fill="none" stroke="#a7f3d0" stroke-width="12" stroke-linecap="round"/>
+    <!-- Forearm Muscle Arc -->
+    <path d="M 290 230 C 330 240, 350 280, 340 320" fill="none" stroke="#047857" stroke-width="8" stroke-linecap="round"/>
+  </g>
 </svg>

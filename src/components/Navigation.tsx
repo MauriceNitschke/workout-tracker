@@ -16,6 +16,8 @@ import {
   MoreHorizontal,
   X,
   SlidersHorizontal,
+  Trash2,
+  Flame,
 } from 'lucide-react';
 import { AppState } from '../types';
 import { calculateConsistencyStats } from '../lib/prCalculator';
@@ -25,15 +27,24 @@ interface NavigationProps {
   setCurrentTab: (tab: string) => void;
   state: AppState;
   onResetSeed: () => void;
+  onClearCleanSlate: () => void;
   onExportData: () => void;
   onImportData: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
+
+// Custom Flexing Biceps Icon
+const BicepsLogoIcon: React.FC<{ className?: string }> = ({ className = 'w-5 h-5' }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+    <path d="M20.5 8c-.83 0-1.5.67-1.5 1.5v.5c0 2.21-1.79 4-4 4h-1v-2c0-.55-.45-1-1-1h-2c-.55 0-1 .45-1 1v2h-1c-2.21 0-4-1.79-4-4v-.5C5 8.67 4.33 8 3.5 8S2 8.67 2 9.5v.5C2 13.64 5.36 17 9.5 17h1v2c0 .55.45 1 1 1h2c.55 0 1-.45 1-1v-2h1c4.14 0 7.5-3.36 7.5-7.5v-.5c0-.83-.67-1.5-1.5-1.5zM7 9a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm10 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4z" />
+  </svg>
+);
 
 export const Navigation: React.FC<NavigationProps> = ({
   currentTab,
   setCurrentTab,
   state,
   onResetSeed,
+  onClearCleanSlate,
   onExportData,
   onImportData,
 }) => {
@@ -65,9 +76,9 @@ export const Navigation: React.FC<NavigationProps> = ({
   const secondaryTabs = [
     {
       id: 'life-in-weeks',
-      label: 'Life in Weeks Grid',
+      label: 'Streak Tracker',
       desc: 'Visual lifetime week map & workout logs',
-      icon: LayoutGrid,
+      icon: Flame,
     },
     {
       id: 'exercises',
@@ -96,19 +107,19 @@ export const Navigation: React.FC<NavigationProps> = ({
           <div className="flex items-center justify-between h-14 sm:h-16">
             {/* Logo / Title */}
             <div className="flex items-center space-x-2.5 sm:space-x-3">
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-600 text-zinc-950 font-mono font-bold text-sm flex items-center justify-center tracking-tighter shadow-sm shadow-emerald-500/20">
-                OS
+              <div className="w-9 h-9 rounded-xl bg-emerald-500 text-zinc-950 flex items-center justify-center shadow-lg shadow-emerald-500/20 shrink-0">
+                <Dumbbell className="w-5 h-5 font-bold" />
               </div>
               <div>
                 <div className="flex items-center space-x-1.5 sm:space-x-2">
-                  <span className="font-bold text-xs sm:text-sm tracking-tight text-zinc-100">
+                  <span className="font-extrabold text-xs sm:text-sm tracking-tight text-zinc-100 font-mono">
                     TRAINING OS
                   </span>
-                  <span className="text-[9px] uppercase font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-emerald-400 border border-zinc-700/80">
+                  <span className="text-[9px] uppercase font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-emerald-400 border border-zinc-700/80 font-bold">
                     PWA
                   </span>
                 </div>
-                <p className="text-[11px] text-zinc-400 hidden sm:block">
+                <p className="text-[11px] text-zinc-400 hidden sm:block font-mono">
                   Plan → Execute → Review → Overload
                 </p>
               </div>
@@ -149,25 +160,25 @@ export const Navigation: React.FC<NavigationProps> = ({
               <div className="relative">
                 <button
                   onClick={() => setShowDataMenu(!showDataMenu)}
-                  className="px-2.5 py-1.5 text-xs font-mono text-zinc-300 hover:text-zinc-100 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition"
+                  className="px-2.5 py-1.5 text-xs font-mono font-bold text-zinc-300 hover:text-zinc-100 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition"
                 >
-                  Data
+                  Data ▾
                 </button>
 
                 {showDataMenu && (
-                  <div className="absolute right-0 mt-2 w-56 rounded-xl bg-zinc-900 border border-zinc-800 shadow-2xl p-2 text-xs z-50">
+                  <div className="absolute right-0 mt-2 w-60 rounded-2xl bg-zinc-900 border border-zinc-800 shadow-2xl p-2 text-xs z-50 space-y-1 font-mono">
                     <button
                       onClick={() => {
                         onExportData();
                         setShowDataMenu(false);
                       }}
-                      className="w-full flex items-center space-x-2 px-3 py-2 text-zinc-300 hover:bg-zinc-800 rounded-lg transition text-left font-medium"
+                      className="w-full flex items-center space-x-2 px-3 py-2 text-zinc-300 hover:bg-zinc-800 rounded-xl transition text-left font-medium"
                     >
                       <Download className="w-4 h-4 text-emerald-400" />
                       <span>Export Backup (JSON)</span>
                     </button>
 
-                    <label className="w-full flex items-center space-x-2 px-3 py-2 text-zinc-300 hover:bg-zinc-800 rounded-lg transition cursor-pointer text-left font-medium">
+                    <label className="w-full flex items-center space-x-2 px-3 py-2 text-zinc-300 hover:bg-zinc-800 rounded-xl transition cursor-pointer text-left font-medium">
                       <Upload className="w-4 h-4 text-sky-400" />
                       <span>Import Backup</span>
                       <input
@@ -181,23 +192,40 @@ export const Navigation: React.FC<NavigationProps> = ({
                       />
                     </label>
 
-                    <div className="border-t border-zinc-800 my-1.5"></div>
+                    <div className="border-t border-zinc-800 my-1"></div>
 
                     <button
                       onClick={() => {
                         if (
                           confirm(
-                            'Reset state to default 6-month seed data? This will overwrite local changes.'
+                            'Start clean slate? This will clear all existing workouts so you can start fresh on your phone.'
+                          )
+                        ) {
+                          onClearCleanSlate();
+                        }
+                        setShowDataMenu(false);
+                      }}
+                      className="w-full flex items-center space-x-2 px-3 py-2 text-amber-400 hover:bg-amber-950/40 rounded-xl transition text-left font-semibold"
+                    >
+                      <Trash2 className="w-4 h-4 text-amber-400" />
+                      <span>Clean Slate (Start Empty)</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        if (
+                          confirm(
+                            'Reset state to default sample seed data? This will overwrite local changes.'
                           )
                         ) {
                           onResetSeed();
                         }
                         setShowDataMenu(false);
                       }}
-                      className="w-full flex items-center space-x-2 px-3 py-2 text-rose-400 hover:bg-rose-950/40 rounded-lg transition text-left font-medium"
+                      className="w-full flex items-center space-x-2 px-3 py-2 text-zinc-400 hover:bg-zinc-800/80 rounded-xl transition text-left font-medium"
                     >
-                      <RotateCcw className="w-4 h-4 text-rose-400" />
-                      <span>Reset Seed Data</span>
+                      <RotateCcw className="w-4 h-4 text-zinc-400" />
+                      <span>Reset Sample Seed</span>
                     </button>
                   </div>
                 )}
@@ -310,7 +338,7 @@ export const Navigation: React.FC<NavigationProps> = ({
             <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
               <div className="flex items-center space-x-2">
                 <SlidersHorizontal className="w-5 h-5 text-emerald-400" />
-                <h3 className="text-sm font-bold text-zinc-100">Additional System Modules</h3>
+                <h3 className="text-sm font-bold text-zinc-100 font-mono">System Modules</h3>
               </div>
               <button
                 onClick={() => setShowMoreMobileSheet(false)}
@@ -350,7 +378,7 @@ export const Navigation: React.FC<NavigationProps> = ({
                         <Icon className="w-5 h-5" />
                       </div>
                       <div>
-                        <div className="text-xs font-bold text-zinc-100">{st.label}</div>
+                        <div className="text-xs font-bold text-zinc-100 font-mono">{st.label}</div>
                         <div className="text-[11px] text-zinc-400 leading-tight">{st.desc}</div>
                       </div>
                     </div>
@@ -361,30 +389,32 @@ export const Navigation: React.FC<NavigationProps> = ({
             </div>
 
             {/* Backup & Tools Quick Bar inside Sheet */}
-            <div className="pt-2 border-t border-zinc-800 flex items-center justify-between">
-              <button
-                onClick={() => {
-                  onExportData();
-                  setShowMoreMobileSheet(false);
-                }}
-                className="flex items-center space-x-2 text-xs font-mono text-zinc-300 bg-zinc-950 px-3.5 py-2.5 rounded-xl border border-zinc-800 active:scale-95 transition"
-              >
-                <Download className="w-4 h-4 text-emerald-400" />
-                <span>Export JSON</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  if (confirm('Reset to initial 6-month seed data?')) {
-                    onResetSeed();
+            <div className="pt-3 border-t border-zinc-800 space-y-2 font-mono">
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => {
+                    onExportData();
                     setShowMoreMobileSheet(false);
-                  }
-                }}
-                className="flex items-center space-x-2 text-xs font-mono text-rose-400 bg-zinc-950 px-3.5 py-2.5 rounded-xl border border-zinc-800 active:scale-95 transition"
-              >
-                <RotateCcw className="w-4 h-4 text-rose-400" />
-                <span>Reset Seed</span>
-              </button>
+                  }}
+                  className="flex items-center justify-center space-x-1.5 text-xs font-bold text-zinc-200 bg-zinc-950 p-3 rounded-xl border border-zinc-800 active:scale-95 transition"
+                >
+                  <Download className="w-4 h-4 text-emerald-400" />
+                  <span>Export JSON</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    if (confirm('Start clean slate? All workouts will be erased.')) {
+                      onClearCleanSlate();
+                      setShowMoreMobileSheet(false);
+                    }
+                  }}
+                  className="flex items-center justify-center space-x-1.5 text-xs font-bold text-amber-400 bg-zinc-950 p-3 rounded-xl border border-zinc-800 active:scale-95 transition"
+                >
+                  <Trash2 className="w-4 h-4 text-amber-400" />
+                  <span>Clean Slate</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

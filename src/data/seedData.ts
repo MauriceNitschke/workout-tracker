@@ -634,3 +634,16 @@ export function getInitialSeedState(): AppState {
     activeWorkoutId: null,
   };
 }
+
+export function getCleanSlateState(): AppState {
+  const seed = getInitialSeedState();
+  return {
+    ...seed,
+    scheduledWorkouts: [],
+    workoutExecutions: [],
+    enduranceActivities: [],
+    recoveryActivities: [],
+    activeWorkoutId: null,
+  };
+}
+

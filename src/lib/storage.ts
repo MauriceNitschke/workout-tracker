@@ -1,5 +1,5 @@
 import { AppState } from '../types';
-import { getInitialSeedState } from '../data/seedData';
+import { getInitialSeedState, getCleanSlateState } from '../data/seedData';
 
 const STORAGE_KEY = 'training_os_app_state_v1';
 
@@ -39,6 +39,13 @@ export function resetAppStateToSeed(): AppState {
   saveAppState(seed);
   return seed;
 }
+
+export function clearAppStateToCleanSlate(): AppState {
+  const clean = getCleanSlateState();
+  saveAppState(clean);
+  return clean;
+}
+
 
 export function exportAppStateJSON(state: AppState): void {
   const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(state, null, 2));
