@@ -10,6 +10,8 @@ import {
   Trash2,
   Edit2,
   X,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 import {
   AppState,
@@ -18,6 +20,7 @@ import {
   PRMetric,
   ProgressionStrategy,
   WorkoutTemplate,
+  PlannedSet,
 } from '../types';
 import { ExerciseDetailModal } from './ExerciseDetailModal';
 
