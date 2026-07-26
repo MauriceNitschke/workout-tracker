@@ -1,0 +1,6 @@
+{
+  "name": "Training Operating System",
+  "description": "A deliberate personal training OS for planning, execution, review, and manual progressive overload.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
