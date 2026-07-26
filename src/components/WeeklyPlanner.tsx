@@ -87,13 +87,24 @@ export const WeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
   };
 
   // Add Scheduled Workout from Template
-  const handleAddWorkoutFromTemplate = (tpl: WorkoutTemplate) => {
-    if (isLocked) return;
+  const handleAddWorkoutFromTemplate = (tpl: WorkoutTemplate, targetWeekId?: string) => {
+    const weekToUse = targetWeekId
+      ? state.weeks.find((w) => w.id === targetWeekId) || selectedWeek
+      : selectedWeek;
 
-    const newWorkoutNumber = scheduledWorkouts.length + 1;
+    if (!weekToUse || weekToUse.status === 'Locked') {
+      alert(`Cannot schedule to ${weekToUse?.id ? `Week ${weekToUse.isoWeek}` : 'this week'} because it is locked.`);
+      return;
+    }
+
+    const workoutsInTargetWeek = state.scheduledWorkouts.filter(
+      (sw) => sw.weekId === weekToUse.id
+    );
+    const newWorkoutNumber = workoutsInTargetWeek.length + 1;
+
     const newScheduledWorkout: ScheduledWorkout = {
-      id: `sw-${Date.now()}`,
-      weekId: selectedWeek.id,
+      id: `sw-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      weekId: weekToUse.id,
       title: `${tpl.name} - Session ${newWorkoutNumber}`,
       workoutTemplateId: tpl.id,
       workoutNumber: newWorkoutNumber,
@@ -101,7 +112,7 @@ export const WeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
       plannedExercises: tpl.plannedExercises.map((pe, idx) => ({
         id: `pe-${Date.now()}-${idx}`,
         exerciseId: pe.exerciseId,
-        plannedSets: pe.plannedSets,
+        plannedSets: pe.plannedSets.map((ps) => ({ ...ps })),
         plannedNotes: pe.plannedNotes,
         order: pe.order,
       })),
@@ -111,6 +122,11 @@ export const WeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
       ...state,
       scheduledWorkouts: [...state.scheduledWorkouts, newScheduledWorkout],
     });
+
+    // Automatically switch view to target week if added elsewhere
+    if (weekToUse.id !== selectedWeek.id) {
+      setSelectedWeekId(weekToUse.id);
+    }
   };
 
   // Create a brand new Training Week
@@ -353,26 +369,28 @@ export const WeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
       </div>
 
       {/* Week Selector & Locking Controls */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          {/* Week Tabs */}
-          <div className="flex items-center space-x-2 overflow-x-auto pb-1">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 sm:p-5 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          {/* Week Tabs & Select Dropdown */}
+          <div className="flex items-center space-x-2 overflow-x-auto pb-1 max-w-full">
             {state.weeks.map((w) => {
-              const isSelected = w.id === selectedWeek.id;
+              const isSelected = w.id === selectedWeek?.id;
               return (
                 <button
                   key={w.id}
                   onClick={() => setSelectedWeekId(w.id)}
-                  className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg font-mono text-xs font-medium transition ${
+                  className={`flex items-center space-x-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl font-mono text-xs font-semibold shrink-0 transition ${
                     isSelected
-                      ? 'bg-zinc-800 text-zinc-100 border border-zinc-700 shadow-sm ring-1 ring-zinc-600'
-                      : 'bg-zinc-950 text-zinc-400 border border-zinc-800 hover:border-zinc-700'
+                      ? 'bg-emerald-500 text-zinc-950 shadow-md ring-2 ring-emerald-400/50'
+                      : 'bg-zinc-950 text-zinc-300 border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/60'
                   }`}
                 >
                   <span>W{w.isoWeek}</span>
                   <span
-                    className={`px-1.5 py-0.5 text-[9px] uppercase rounded ${
-                      w.status === 'Locked'
+                    className={`px-1.5 py-0.5 text-[9px] uppercase font-bold rounded ${
+                      isSelected
+                        ? 'bg-zinc-950/30 text-zinc-950'
+                        : w.status === 'Locked'
                         ? 'bg-amber-500/20 text-amber-400'
                         : w.status === 'In Progress'
                         ? 'bg-emerald-500/20 text-emerald-400'
@@ -386,55 +404,69 @@ export const WeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
             })}
           </div>
 
-          {/* Overload Generator Trigger */}
-          <button
-            onClick={() => setShowOverloadModal(true)}
-            className="flex items-center space-x-2 px-3.5 py-2 text-xs font-mono font-medium rounded-lg bg-purple-500/10 text-purple-300 border border-purple-500/30 hover:bg-purple-500/20 transition shrink-0"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-            <span>4-WEEK OVERLOAD DRAFT</span>
-          </button>
+          <div className="flex items-center space-x-2 shrink-0">
+            {/* Quick Mobile Dropdown */}
+            <select
+              value={selectedWeek?.id}
+              onChange={(e) => setSelectedWeekId(e.target.value)}
+              className="sm:hidden bg-zinc-950 border border-zinc-800 text-zinc-200 text-xs font-mono font-bold rounded-xl px-2.5 py-1.5"
+            >
+              {state.weeks.map((w) => (
+                <option key={w.id} value={w.id}>
+                  Week {w.isoWeek} ({w.status})
+                </option>
+              ))}
+            </select>
+
+            {/* Overload Generator Trigger */}
+            <button
+              onClick={() => setShowOverloadModal(true)}
+              className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-mono font-semibold rounded-xl bg-purple-500/10 text-purple-300 border border-purple-500/30 hover:bg-purple-500/20 transition shrink-0"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+              <span>4-WEEK OVERLOAD DRAFT</span>
+            </button>
+          </div>
         </div>
 
         {/* Selected Week Info & Status Transition */}
         {selectedWeek && (
           <div className="pt-3 border-t border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-mono">
-            <div className="flex items-center space-x-3 text-zinc-400">
-              <span className="text-zinc-200 font-bold">
+            <div className="flex flex-wrap items-center gap-2 text-zinc-400">
+              <span className="text-zinc-100 font-bold bg-zinc-800/80 px-2.5 py-1 rounded-lg">
                 ISO Week {selectedWeek.isoWeek} ({selectedWeek.year})
               </span>
-              <span>•</span>
-              <span>Started: {selectedWeek.startDate}</span>
+              <span className="text-zinc-400">Started: {selectedWeek.startDate}</span>
               {isLocked && (
                 <span className="flex items-center space-x-1 text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
                   <Lock className="w-3.5 h-3.5" />
-                  <span>Locked (Historical Integrity)</span>
+                  <span>Locked</span>
                 </span>
               )}
             </div>
 
             {/* Status Change Controls */}
             <div className="flex items-center space-x-2">
-              <span className="text-zinc-500">Status:</span>
+              <span className="text-zinc-500 font-medium">Status:</span>
               {isLocked ? (
                 <button
                   onClick={() => setShowUnlockConfirm(true)}
-                  className="px-2.5 py-1 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 font-semibold flex items-center space-x-1"
+                  className="px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 font-semibold flex items-center space-x-1 active:scale-95 transition"
                 >
                   <Unlock className="w-3 h-3" />
                   <span>UNLOCK WEEK TO EDIT</span>
                 </button>
               ) : (
-                <div className="flex items-center space-x-1 bg-zinc-950 p-1 rounded-lg border border-zinc-800">
+                <div className="flex flex-wrap items-center gap-1 bg-zinc-950 p-1 rounded-xl border border-zinc-800">
                   {(['Planning', 'Ready', 'In Progress', 'Completed', 'Locked'] as WeekStatus[]).map(
                     (st) => (
                       <button
                         key={st}
                         onClick={() => handleSetWeekStatus(st)}
-                        className={`px-2 py-1 rounded text-[10px] font-bold transition ${
+                        className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition active:scale-95 ${
                           selectedWeek.status === st
-                            ? 'bg-zinc-800 text-zinc-100'
-                            : 'text-zinc-500 hover:text-zinc-300'
+                            ? 'bg-emerald-500 text-zinc-950 shadow'
+                            : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
                         }`}
                       >
                         {st}
@@ -451,7 +483,7 @@ export const WeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
       {/* Unlock Week Confirmation Modal */}
       {showUnlockConfirm && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 max-w-md w-full space-y-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl">
             <div className="flex items-center space-x-2 text-amber-400">
               <Lock className="w-5 h-5" />
               <h3 className="text-base font-bold text-zinc-100">Unlock Completed Week?</h3>
@@ -471,7 +503,7 @@ export const WeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
                   handleSetWeekStatus('In Progress');
                   setShowUnlockConfirm(false);
                 }}
-                className="px-4 py-2 text-xs font-mono font-bold rounded-lg bg-amber-500 text-zinc-950"
+                className="px-4 py-2 text-xs font-mono font-bold rounded-xl bg-amber-500 text-zinc-950 active:scale-95 transition"
               >
                 Confirm Unlock
               </button>
@@ -488,7 +520,7 @@ export const WeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
             WORKOUT TEMPLATES
           </h2>
           <p className="text-xs text-zinc-500">
-            Click to add a standard template to Week {selectedWeek?.isoWeek}.
+            Click to add a standard template to Week {selectedWeek?.isoWeek} or select a target week below.
           </p>
 
           <div className="space-y-3">
@@ -501,16 +533,38 @@ export const WeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
                   <h3 className="text-sm font-semibold text-zinc-200">{tpl.name}</h3>
                   <button
                     disabled={isLocked}
-                    onClick={() => handleAddWorkoutFromTemplate(tpl)}
-                    className="flex items-center space-x-1 px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30 text-zinc-200 text-xs font-mono transition"
+                    onClick={() => handleAddWorkoutFromTemplate(tpl, selectedWeek?.id)}
+                    className="flex items-center space-x-1 px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 disabled:opacity-30 text-zinc-950 text-xs font-mono font-bold transition active:scale-95 shadow"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    <span>ADD</span>
+                    <span>ADD TO W{selectedWeek?.isoWeek}</span>
                   </button>
                 </div>
                 <p className="text-xs text-zinc-400">{tpl.description}</p>
-                <div className="text-[11px] font-mono text-zinc-500">
-                  {tpl.plannedExercises.length} Exercises defined
+                <div className="flex items-center justify-between pt-1 border-t border-zinc-800/60 text-[11px] font-mono">
+                  <span className="text-zinc-500">
+                    {tpl.plannedExercises.length} Exercises defined
+                  </span>
+                  {/* Target Week Picker per template */}
+                  <div className="flex items-center space-x-1">
+                    <span className="text-zinc-500 text-[10px]">Schedule to:</span>
+                    <select
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          handleAddWorkoutFromTemplate(tpl, e.target.value);
+                          e.target.value = '';
+                        }
+                      }}
+                      className="bg-zinc-950 border border-zinc-800 text-zinc-300 text-[10px] rounded px-1.5 py-0.5"
+                    >
+                      <option value="">Choose week...</option>
+                      {state.weeks.map((w) => (
+                        <option key={w.id} value={w.id}>
+                          Week {w.isoWeek} ({w.status})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
             ))}
@@ -769,214 +823,257 @@ export const WeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
 
       {/* Edit Workout Modal */}
       {editingWorkout && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto space-y-6 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-zinc-800 pb-4">
-              <div className="flex items-center space-x-2 text-emerald-400 font-mono">
-                <Dumbbell className="w-5 h-5" />
-                <h3 className="text-lg font-bold text-zinc-100">
-                  Configure Planned Workout
-                </h3>
-              </div>
-              <button
-                onClick={() => setEditingWorkout(null)}
-                className="text-zinc-400 hover:text-zinc-200 transition"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Workout Details */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs font-mono">
-              <div className="space-y-1">
-                <label className="text-zinc-400 uppercase">Workout Title</label>
-                <input
-                  type="text"
-                  value={editingWorkout.title}
-                  onChange={(e) =>
-                    setEditingWorkout({ ...editingWorkout, title: e.target.value })
-                  }
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-zinc-100 focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-zinc-400 uppercase">Session Notes / Focus</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Focus on explosive concentric pace"
-                  value={editingWorkout.notes || ''}
-                  onChange={(e) =>
-                    setEditingWorkout({ ...editingWorkout, notes: e.target.value })
-                  }
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-zinc-100 focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-            </div>
-
-            {/* Planned Exercises Header */}
-            <div className="space-y-4 pt-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2 text-xs font-mono font-bold uppercase text-zinc-300">
-                  <Layers className="w-4 h-4 text-emerald-400" />
-                  <span>Planned Exercises ({editingWorkout.plannedExercises.length})</span>
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-zinc-900 border border-zinc-800 sm:rounded-2xl rounded-t-2xl p-4 sm:p-6 max-w-3xl w-full h-[92vh] sm:h-auto max-h-[92vh] overflow-y-auto space-y-6 shadow-2xl flex flex-col justify-between">
+            <div className="space-y-6">
+              <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+                <div className="flex items-center space-x-2 text-emerald-400 font-mono">
+                  <Dumbbell className="w-5 h-5" />
+                  <h3 className="text-base sm:text-lg font-bold text-zinc-100">
+                    Configure Planned Workout
+                  </h3>
                 </div>
-
                 <button
-                  onClick={() => setShowExercisePicker(true)}
-                  className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-mono text-xs font-bold transition shadow-sm"
+                  onClick={() => setEditingWorkout(null)}
+                  className="p-1.5 rounded-lg bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition"
                 >
-                  <Plus className="w-4 h-4" />
-                  <span>ADD EXERCISE</span>
+                  <X className="w-5 h-5" />
                 </button>
               </div>
 
-              {editingWorkout.plannedExercises.length === 0 ? (
-                <div className="p-8 rounded-xl bg-zinc-950 border border-dashed border-zinc-800 text-center space-y-2">
-                  <Dumbbell className="w-8 h-8 text-zinc-600 mx-auto" />
-                  <p className="text-xs font-mono text-zinc-400">
-                    No exercises added to this planned workout yet.
-                  </p>
+              {/* Workout Details (Title, Week, Notes) */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs font-mono">
+                <div className="space-y-1">
+                  <label className="text-zinc-400 uppercase font-bold text-[10px]">Workout Title</label>
+                  <input
+                    type="text"
+                    value={editingWorkout.title}
+                    onChange={(e) =>
+                      setEditingWorkout({ ...editingWorkout, title: e.target.value })
+                    }
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-zinc-100 focus:outline-none focus:border-emerald-500 font-bold"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-zinc-400 uppercase font-bold text-[10px]">Target Training Week</label>
+                  <select
+                    value={editingWorkout.weekId}
+                    onChange={(e) =>
+                      setEditingWorkout({ ...editingWorkout, weekId: e.target.value })
+                    }
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-emerald-400 focus:outline-none focus:border-emerald-500 font-bold"
+                  >
+                    {state.weeks.map((w) => (
+                      <option key={w.id} value={w.id}>
+                        Week {w.isoWeek} ({w.status})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-zinc-400 uppercase font-bold text-[10px]">Session Notes / Focus</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Focus on explosive concentric pace"
+                    value={editingWorkout.notes || ''}
+                    onChange={(e) =>
+                      setEditingWorkout({ ...editingWorkout, notes: e.target.value })
+                    }
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-zinc-100 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              {/* Planned Exercises Header */}
+              <div className="space-y-4 pt-1">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2 text-xs font-mono font-bold uppercase text-zinc-300">
+                    <Layers className="w-4 h-4 text-emerald-400" />
+                    <span>Planned Exercises ({editingWorkout.plannedExercises.length})</span>
+                  </div>
+
                   <button
                     onClick={() => setShowExercisePicker(true)}
-                    className="inline-flex items-center space-x-1 px-3 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-emerald-400 text-xs font-mono font-semibold transition"
+                    className="flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-mono text-xs font-bold transition active:scale-95 shadow"
                   >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Browse & Add Exercise</span>
+                    <Plus className="w-4 h-4" />
+                    <span>ADD EXERCISE</span>
                   </button>
                 </div>
-              ) : (
-                <div className="space-y-4">
-                  {editingWorkout.plannedExercises.map((pe, peIdx) => {
-                    const ex = state.exercises.find((e) => e.id === pe.exerciseId);
-                    return (
-                      <div
-                        key={pe.id}
-                        className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 space-y-3"
-                      >
-                        {/* Exercise Title Bar */}
-                        <div className="flex items-center justify-between pb-2 border-b border-zinc-800/80">
-                          <div className="flex items-center space-x-3">
-                            <span className="text-xs font-mono font-bold text-zinc-500">
-                              #{peIdx + 1}
-                            </span>
-                            <h4 className="text-sm font-bold text-zinc-100">
-                              {ex?.name || 'Exercise'}
-                            </h4>
-                            {ex?.category && (
-                              <span className="px-2 py-0.5 text-[10px] font-mono rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
-                                {ex.category}
+
+                {editingWorkout.plannedExercises.length === 0 ? (
+                  <div className="p-8 rounded-2xl bg-zinc-950 border border-dashed border-zinc-800 text-center space-y-2">
+                    <Dumbbell className="w-8 h-8 text-zinc-600 mx-auto" />
+                    <p className="text-xs font-mono text-zinc-400">
+                      No exercises added to this planned workout yet.
+                    </p>
+                    <button
+                      onClick={() => setShowExercisePicker(true)}
+                      className="inline-flex items-center space-x-1 px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-emerald-400 text-xs font-mono font-bold transition"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Browse Catalog & Add</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {editingWorkout.plannedExercises.map((pe, peIdx) => {
+                      const ex = state.exercises.find((e) => e.id === pe.exerciseId);
+                      return (
+                        <div
+                          key={pe.id}
+                          className="bg-zinc-950 border border-zinc-800 rounded-2xl p-3.5 sm:p-4 space-y-3 shadow-inner"
+                        >
+                          {/* Exercise Title Bar */}
+                          <div className="flex items-center justify-between pb-2 border-b border-zinc-800/80">
+                            <div className="flex items-center space-x-2.5">
+                              <span className="text-xs font-mono font-bold text-zinc-500 bg-zinc-900 px-2 py-0.5 rounded">
+                                #{peIdx + 1}
                               </span>
-                            )}
-                          </div>
+                              <h4 className="text-sm font-bold text-zinc-100">
+                                {ex?.name || 'Exercise'}
+                              </h4>
+                              {ex?.category && (
+                                <span className="hidden sm:inline-block px-2 py-0.5 text-[10px] font-mono rounded bg-zinc-900 text-zinc-400 border border-zinc-800">
+                                  {ex.category}
+                                </span>
+                              )}
+                            </div>
 
-                          <div className="flex items-center space-x-1">
-                            <button
-                              disabled={peIdx === 0}
-                              onClick={() => handleReorderExercise(peIdx, 'up')}
-                              className="p-1 rounded text-zinc-500 hover:text-zinc-200 disabled:opacity-30"
-                              title="Move Up"
-                            >
-                              <ArrowUp className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              disabled={peIdx === editingWorkout.plannedExercises.length - 1}
-                              onClick={() => handleReorderExercise(peIdx, 'down')}
-                              className="p-1 rounded text-zinc-500 hover:text-zinc-200 disabled:opacity-30"
-                              title="Move Down"
-                            >
-                              <ArrowDown className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => handleRemoveExerciseFromEditingWorkout(pe.id)}
-                              className="p-1.5 rounded text-rose-400 hover:bg-rose-950/50 transition ml-2"
-                              title="Remove Exercise"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Sets Editor */}
-                        <div className="space-y-2">
-                          <div className="grid grid-cols-[50px_1fr_1fr_40px] gap-2 text-[10px] font-mono uppercase text-zinc-500 font-bold px-1">
-                            <span>SET</span>
-                            <span>PLANNED REPS</span>
-                            <span>PLANNED WEIGHT (KG)</span>
-                            <span></span>
-                          </div>
-
-                          {pe.plannedSets.map((s, sIdx) => (
-                            <div
-                              key={sIdx}
-                              className="grid grid-cols-[50px_1fr_1fr_40px] gap-2 items-center text-xs font-mono"
-                            >
-                              <span className="text-zinc-400 font-bold px-1">
-                                #{s.setNumber}
-                              </span>
-                              <input
-                                type="number"
-                                value={s.plannedReps}
-                                onChange={(e) =>
-                                  handleUpdateSetDetails(
-                                    pe.id,
-                                    sIdx,
-                                    'plannedReps',
-                                    Number(e.target.value)
-                                  )
-                                }
-                                className="bg-zinc-900 border border-zinc-800 rounded p-1.5 text-zinc-100 text-center font-mono focus:border-emerald-500"
-                              />
-                              <input
-                                type="number"
-                                step="0.5"
-                                value={s.plannedWeight}
-                                onChange={(e) =>
-                                  handleUpdateSetDetails(
-                                    pe.id,
-                                    sIdx,
-                                    'plannedWeight',
-                                    Number(e.target.value)
-                                  )
-                                }
-                                className="bg-zinc-900 border border-zinc-800 rounded p-1.5 text-emerald-400 text-center font-mono font-bold focus:border-emerald-500"
-                              />
+                            <div className="flex items-center space-x-1">
                               <button
-                                onClick={() => handleRemoveSetFromExercise(pe.id, sIdx)}
-                                className="p-1 rounded text-zinc-500 hover:text-rose-400 flex justify-center"
-                                title="Delete Set"
+                                disabled={peIdx === 0}
+                                onClick={() => handleReorderExercise(peIdx, 'up')}
+                                className="p-1.5 rounded-lg bg-zinc-900 text-zinc-400 hover:text-zinc-200 disabled:opacity-30"
+                                title="Move Up"
                               >
-                                <X className="w-3.5 h-3.5" />
+                                <ArrowUp className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                disabled={peIdx === editingWorkout.plannedExercises.length - 1}
+                                onClick={() => handleReorderExercise(peIdx, 'down')}
+                                className="p-1.5 rounded-lg bg-zinc-900 text-zinc-400 hover:text-zinc-200 disabled:opacity-30"
+                                title="Move Down"
+                              >
+                                <ArrowDown className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleRemoveExerciseFromEditingWorkout(pe.id)}
+                                className="p-1.5 rounded-lg bg-rose-950/40 text-rose-400 hover:bg-rose-900/60 transition ml-1"
+                                title="Remove Exercise"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             </div>
-                          ))}
+                          </div>
 
-                          <button
-                            onClick={() => handleAddSetToExercise(pe.id)}
-                            className="mt-2 text-[11px] font-mono text-emerald-400 hover:text-emerald-300 flex items-center space-x-1"
-                          >
-                            <Plus className="w-3 h-3" />
-                            <span>Add Planned Set</span>
-                          </button>
+                          {/* Sets Editor */}
+                          <div className="space-y-2">
+                            <div className="hidden sm:grid grid-cols-[50px_1fr_1fr_40px] gap-2 text-[10px] font-mono uppercase text-zinc-500 font-bold px-1">
+                              <span>SET</span>
+                              <span>PLANNED REPS</span>
+                              <span>PLANNED WEIGHT (KG)</span>
+                              <span></span>
+                            </div>
+
+                            {pe.plannedSets.map((s, sIdx) => (
+                              <div
+                                key={sIdx}
+                                className="flex flex-col sm:grid sm:grid-cols-[50px_1fr_1fr_40px] gap-2 sm:items-center text-xs font-mono bg-zinc-900/80 sm:bg-transparent p-2 sm:p-0 rounded-xl border sm:border-none border-zinc-800"
+                              >
+                                <div className="flex items-center justify-between sm:justify-start">
+                                  <span className="text-zinc-400 font-bold sm:px-1">
+                                    Set #{s.setNumber}
+                                  </span>
+                                  <button
+                                    onClick={() => handleRemoveSetFromExercise(pe.id, sIdx)}
+                                    className="sm:hidden p-1 text-zinc-500 hover:text-rose-400"
+                                    title="Delete Set"
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </button>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2 sm:col-span-2">
+                                  <div className="space-y-1">
+                                    <span className="sm:hidden text-[10px] text-zinc-500 uppercase font-bold block">
+                                      Planned Reps
+                                    </span>
+                                    <input
+                                      type="number"
+                                      value={s.plannedReps}
+                                      onChange={(e) =>
+                                        handleUpdateSetDetails(
+                                          pe.id,
+                                          sIdx,
+                                          'plannedReps',
+                                          Number(e.target.value)
+                                        )
+                                      }
+                                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2 text-zinc-100 text-center font-mono font-bold focus:border-emerald-500"
+                                    />
+                                  </div>
+
+                                  <div className="space-y-1">
+                                    <span className="sm:hidden text-[10px] text-zinc-500 uppercase font-bold block">
+                                      Weight (kg)
+                                    </span>
+                                    <input
+                                      type="number"
+                                      step="0.5"
+                                      value={s.plannedWeight}
+                                      onChange={(e) =>
+                                        handleUpdateSetDetails(
+                                          pe.id,
+                                          sIdx,
+                                          'plannedWeight',
+                                          Number(e.target.value)
+                                        )
+                                      }
+                                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2 text-emerald-400 text-center font-mono font-bold focus:border-emerald-500"
+                                    />
+                                  </div>
+                                </div>
+
+                                <button
+                                  onClick={() => handleRemoveSetFromExercise(pe.id, sIdx)}
+                                  className="hidden sm:flex p-1 rounded text-zinc-500 hover:text-rose-400 justify-center"
+                                  title="Delete Set"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ))}
+
+                            <button
+                              onClick={() => handleAddSetToExercise(pe.id)}
+                              className="mt-2 text-xs font-mono font-bold text-emerald-400 hover:text-emerald-300 flex items-center space-x-1.5 p-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 transition active:scale-95"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              <span>Add Planned Set</span>
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Footer buttons */}
-            <div className="flex items-center justify-end space-x-3 pt-4 border-t border-zinc-800">
+            <div className="flex items-center justify-end space-x-3 pt-4 border-t border-zinc-800 mt-4">
               <button
                 onClick={() => setEditingWorkout(null)}
-                className="px-4 py-2 text-xs font-mono text-zinc-400 hover:text-zinc-200"
+                className="px-4 py-2.5 text-xs font-mono text-zinc-400 hover:text-zinc-200 font-bold"
               >
                 Cancel
               </button>
               <button
                 onClick={() => handleSaveWorkoutEdit(editingWorkout)}
-                className="px-5 py-2.5 text-xs font-mono font-bold rounded-lg bg-emerald-500 hover:bg-emerald-400 text-zinc-950 transition shadow-lg shadow-emerald-500/10"
+                className="px-6 py-3 text-xs font-mono font-bold rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 transition shadow-lg shadow-emerald-500/10 active:scale-95"
               >
                 SAVE WORKOUT PLAN
               </button>

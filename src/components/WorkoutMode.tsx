@@ -420,7 +420,7 @@ export const WorkoutMode: React.FC<WorkoutModeProps> = ({
                 <span>PLANNED: {plannedSet?.plannedReps} reps @ {plannedSet?.plannedWeight} kg</span>
               </div>
 
-              <div className="grid grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 {/* Reps Input */}
                 <div className="space-y-2">
                   <label className="text-xs font-mono text-zinc-400 uppercase block text-center">
@@ -429,7 +429,7 @@ export const WorkoutMode: React.FC<WorkoutModeProps> = ({
                   <div className="flex items-center justify-center space-x-2">
                     <button
                       onClick={() => setLoggedReps(Math.max(1, loggedReps - 1))}
-                      className="w-12 h-12 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-200 text-xl font-bold hover:bg-zinc-800"
+                      className="w-12 h-12 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-200 text-xl font-bold active:scale-90 transition hover:bg-zinc-800"
                     >
                       -
                     </button>
@@ -441,10 +441,23 @@ export const WorkoutMode: React.FC<WorkoutModeProps> = ({
                     />
                     <button
                       onClick={() => setLoggedReps(loggedReps + 1)}
-                      className="w-12 h-12 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-200 text-xl font-bold hover:bg-zinc-800"
+                      className="w-12 h-12 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-200 text-xl font-bold active:scale-90 transition hover:bg-zinc-800"
                     >
                       +
                     </button>
+                  </div>
+                  {/* Quick Reps Increment Chips */}
+                  <div className="flex items-center justify-center space-x-1.5 pt-1">
+                    {[-2, -1, +1, +2].map((delta) => (
+                      <button
+                        key={`rep-${delta}`}
+                        type="button"
+                        onClick={() => setLoggedReps(Math.max(1, loggedReps + delta))}
+                        className="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-[11px] font-mono font-medium text-zinc-300 active:scale-95 transition"
+                      >
+                        {delta > 0 ? `+${delta}` : delta}
+                      </button>
+                    ))}
                   </div>
                 </div>
 
@@ -456,7 +469,7 @@ export const WorkoutMode: React.FC<WorkoutModeProps> = ({
                   <div className="flex items-center justify-center space-x-2">
                     <button
                       onClick={() => setLoggedWeight(Math.max(0, loggedWeight - 2.5))}
-                      className="w-12 h-12 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-200 text-xl font-bold hover:bg-zinc-800"
+                      className="w-12 h-12 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-200 text-xl font-bold active:scale-90 transition hover:bg-zinc-800"
                     >
                       -
                     </button>
@@ -469,10 +482,23 @@ export const WorkoutMode: React.FC<WorkoutModeProps> = ({
                     />
                     <button
                       onClick={() => setLoggedWeight(loggedWeight + 2.5)}
-                      className="w-12 h-12 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-200 text-xl font-bold hover:bg-zinc-800"
+                      className="w-12 h-12 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-200 text-xl font-bold active:scale-90 transition hover:bg-zinc-800"
                     >
                       +
                     </button>
+                  </div>
+                  {/* Quick Weight Increment Chips */}
+                  <div className="flex items-center justify-center space-x-1.5 pt-1 flex-wrap gap-y-1">
+                    {[-5, -2.5, -1, +1, +2.5, +5].map((delta) => (
+                      <button
+                        key={`w-${delta}`}
+                        type="button"
+                        onClick={() => setLoggedWeight(Math.max(0, loggedWeight + delta))}
+                        className="px-2 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-[10px] font-mono font-medium text-zinc-300 active:scale-95 transition"
+                      >
+                        {delta > 0 ? `+${delta}` : delta}kg
+                      </button>
+                    ))}
                   </div>
                 </div>
               </div>

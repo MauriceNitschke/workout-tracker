@@ -128,7 +128,7 @@ export default function App() {
         onImportData={handleImportData}
       />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-28 md:pb-12">
         {currentTab === 'dashboard' && (
           <Dashboard
             state={state}
@@ -168,6 +168,31 @@ export default function App() {
           <EnduranceRecoveryTracker state={state} onUpdateState={setState} />
         )}
       </main>
+
+      {/* Floating Active Workout Pill for Mobile (above bottom bar) */}
+      {state.activeWorkoutId && currentTab !== 'workout' && (
+        <div className="md:hidden fixed bottom-16 left-3 right-3 z-40 bg-emerald-950/90 border border-emerald-500/40 backdrop-blur-xl rounded-2xl p-3 shadow-2xl flex items-center justify-between animate-bounce-short">
+          <div className="flex items-center space-x-3">
+            <span className="relative flex h-3 w-3 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+            </span>
+            <div className="text-left">
+              <div className="text-xs font-bold text-emerald-100 font-mono">ACTIVE SESSION IN PROGRESS</div>
+              <div className="text-[11px] text-emerald-300/80 truncate max-w-[200px]">
+                {state.scheduledWorkouts.find((sw) => sw.id === state.activeWorkoutId)?.name || 'Workout'}
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setCurrentTab('workout')}
+            className="px-3 py-1.5 bg-emerald-500 text-zinc-950 font-mono font-bold text-xs rounded-xl shadow hover:bg-emerald-400 active:scale-95 transition shrink-0"
+          >
+            Resume →
+          </button>
+        </div>
+      )}
     </div>
   );
 }

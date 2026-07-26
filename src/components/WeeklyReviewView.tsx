@@ -489,31 +489,31 @@ export const WeeklyReviewView: React.FC<WeeklyReviewViewProps> = ({ state }) => 
               </div>
             </div>
 
-            {/* Time Filter Tabs */}
-            <div className="flex items-center space-x-2 pt-2 text-xs font-mono">
-              <span className="text-zinc-500 uppercase mr-2 font-bold">TIMEFRAME:</span>
-              {(['1M', '3M', '6M', '1Y', 'ALL'] as TimeFilter[]).map((tf) => (
-                <button
-                  key={tf}
-                  onClick={() => setStrengthTimeFilter(tf)}
-                  className={`px-3 py-1.5 rounded-xl font-bold transition ${
-                    strengthTimeFilter === tf
-                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                      : 'bg-zinc-950 text-zinc-400 border border-zinc-800 hover:border-zinc-700'
-                  }`}
-                >
-                  {tf === '1M'
-                    ? 'Last Month'
-                    : tf === '3M'
-                    ? '3 Months'
-                    : tf === '6M'
-                    ? '6 Months'
-                    : tf === '1Y'
-                    ? 'Last Year'
-                    : 'All Time'}
-                </button>
-              ))}
-            </div>
+        {/* Time Filter Tabs */}
+        <div className="flex items-center space-x-2 pt-2 text-xs font-mono overflow-x-auto pb-1 max-w-full">
+          <span className="text-zinc-500 uppercase mr-1 font-bold shrink-0 text-[10px]">TIMEFRAME:</span>
+          {(['1M', '3M', '6M', '1Y', 'ALL'] as TimeFilter[]).map((tf) => (
+            <button
+              key={tf}
+              onClick={() => setStrengthTimeFilter(tf)}
+              className={`px-3 py-1.5 rounded-xl font-bold transition shrink-0 active:scale-95 ${
+                strengthTimeFilter === tf
+                  ? 'bg-emerald-500 text-zinc-950 font-extrabold shadow-md'
+                  : 'bg-zinc-950 text-zinc-400 border border-zinc-800 hover:border-zinc-700'
+              }`}
+            >
+              {tf === '1M'
+                ? '1 Month'
+                : tf === '3M'
+                ? '3 Months'
+                : tf === '6M'
+                ? '6 Months'
+                : tf === '1Y'
+                ? '1 Year'
+                : 'All Time'}
+            </button>
+          ))}
+        </div>
           </div>
 
           {strengthReport && (

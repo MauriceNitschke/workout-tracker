@@ -58,8 +58,96 @@ export const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
   const [editExStrategy, setEditExStrategy] = useState<ProgressionStrategy>('Double Progression');
   const [editExDefaultNotes, setEditExDefaultNotes] = useState('');
 
-  // Exercise Detail Modal State
+  // Template Editing State
+  const [editingTemplate, setEditingTemplate] = useState<WorkoutTemplate | null>(null);
+  const [showAddTemplateExercisePicker, setShowAddTemplateExercisePicker] = useState(false);
+  const [templateExerciseSearchQuery, setTemplateExerciseSearchQuery] = useState('');
   const [detailExerciseId, setDetailExerciseId] = useState<string | null>(null);
+
+  // Handle Create New Template
+  const handleCreateNewTemplate = () => {
+    const newTpl: WorkoutTemplate = {
+      id: `tpl-${Date.now()}`,
+      name: 'New Workout Template',
+      description: 'Custom training session structure.',
+      plannedExercises: [],
+    };
+    setEditingTemplate(newTpl);
+  };
+
+  // Handle Save Template
+  const handleSaveTemplate = () => {
+    if (!editingTemplate || !editingTemplate.name.trim()) return;
+
+    const exists = state.workoutTemplates.some((t) => t.id === editingTemplate.id);
+    let updatedTemplates: WorkoutTemplate[];
+
+    if (exists) {
+      updatedTemplates = state.workoutTemplates.map((t) =>
+        t.id === editingTemplate.id ? editingTemplate : t
+      );
+    } else {
+      updatedTemplates = [...state.workoutTemplates, editingTemplate];
+    }
+
+    onUpdateState({
+      ...state,
+      workoutTemplates: updatedTemplates,
+    });
+
+    setEditingTemplate(null);
+  };
+
+  // Handle Delete Template
+  const handleDeleteTemplate = (tplId: string) => {
+    if (confirm('Are you sure you want to delete this workout template?')) {
+      const filtered = state.workoutTemplates.filter((t) => t.id !== tplId);
+      onUpdateState({
+        ...state,
+        workoutTemplates: filtered,
+      });
+      if (editingTemplate?.id === tplId) {
+        setEditingTemplate(null);
+      }
+    }
+  };
+
+  // Add exercise to template draft
+  const handleAddExerciseToTemplate = (ex: Exercise) => {
+    if (!editingTemplate) return;
+
+    const newPe = {
+      id: `tpe-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      exerciseId: ex.id,
+      order: editingTemplate.plannedExercises.length + 1,
+      plannedSets: [
+        { setNumber: 1, plannedReps: 8, plannedWeight: 60 },
+        { setNumber: 2, plannedReps: 8, plannedWeight: 60 },
+        { setNumber: 3, plannedReps: 8, plannedWeight: 60 },
+      ],
+      plannedNotes: ex.defaultNotes || '',
+    };
+
+    setEditingTemplate({
+      ...editingTemplate,
+      plannedExercises: [...editingTemplate.plannedExercises, newPe],
+    });
+
+    setShowAddTemplateExercisePicker(false);
+  };
+
+  // Remove exercise from template draft
+  const handleRemoveExerciseFromTemplate = (peId: string) => {
+    if (!editingTemplate) return;
+    const filtered = editingTemplate.plannedExercises
+      .filter((pe) => pe.id !== peId)
+      .map((pe, idx) => ({ ...pe, order: idx + 1 }));
+
+    setEditingTemplate({
+      ...editingTemplate,
+      plannedExercises: filtered,
+    });
+  };
 
   // Filter exercises
   const filteredExercises = state.exercises.filter((e) => {
@@ -170,10 +258,19 @@ export const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
         <div className="flex items-center space-x-2 shrink-0">
           <button
             onClick={() => setShowAddExerciseModal(true)}
-            className="flex items-center space-x-2 px-4 py-2.5 text-xs font-mono font-bold rounded-lg bg-emerald-500 hover:bg-emerald-400 text-zinc-950 transition shadow-lg shadow-emerald-500/10"
+            className="flex items-center space-x-2 px-3 sm:px-4 py-2.5 text-xs font-mono font-bold rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition"
+          >
+            <Plus className="w-4 h-4 text-emerald-400" />
+            <span className="hidden sm:inline">NEW EXERCISE</span>
+            <span className="sm:hidden">EXERCISE</span>
+          </button>
+          <button
+            onClick={handleCreateNewTemplate}
+            className="flex items-center space-x-2 px-3 sm:px-4 py-2.5 text-xs font-mono font-bold rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 transition shadow-lg shadow-emerald-500/10 active:scale-95"
           >
             <Plus className="w-4 h-4" />
-            <span>NEW EXERCISE</span>
+            <span className="hidden sm:inline">NEW TEMPLATE</span>
+            <span className="sm:hidden">TEMPLATE</span>
           </button>
         </div>
       </div>
@@ -301,38 +398,269 @@ export const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
       {/* Templates SubTab View */}
       {activeSubTab === 'templates' && (
         <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {state.workoutTemplates.map((tpl) => (
               <div
                 key={tpl.id}
-                className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 space-y-4"
+                className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 space-y-4 flex flex-col justify-between hover:border-zinc-700 transition"
               >
-                <div>
-                  <h3 className="text-lg font-bold text-zinc-100">{tpl.name}</h3>
-                  <p className="text-xs text-zinc-400 mt-1">{tpl.description}</p>
+                <div className="space-y-3">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h3 className="text-base font-bold text-zinc-100">{tpl.name}</h3>
+                      <p className="text-xs text-zinc-400 mt-1">{tpl.description}</p>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <button
+                        onClick={() => setEditingTemplate(tpl)}
+                        className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-emerald-400 transition"
+                        title="Edit Template"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteTemplate(tpl.id)}
+                        className="p-1.5 rounded-lg bg-rose-950/40 hover:bg-rose-900/60 text-rose-400 transition"
+                        title="Delete Template"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-mono uppercase text-zinc-500 font-bold block">
+                      Planned Exercises ({tpl.plannedExercises.length})
+                    </span>
+                    {tpl.plannedExercises.length === 0 ? (
+                      <p className="text-xs font-mono text-zinc-600 italic">No exercises added yet.</p>
+                    ) : (
+                      tpl.plannedExercises.map((pe, idx) => {
+                        const ex = state.exercises.find((e) => e.id === pe.exerciseId);
+                        return (
+                          <div
+                            key={idx}
+                            className="p-2.5 rounded-xl bg-zinc-950 border border-zinc-800/80 text-xs font-mono flex items-center justify-between"
+                          >
+                            <span className="text-zinc-200 font-medium">{ex?.name || 'Exercise'}</span>
+                            <span className="text-emerald-400 font-bold text-[11px]">
+                              {pe.plannedSets.length} sets
+                            </span>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
                 </div>
 
-                <div className="space-y-2">
-                  <span className="text-xs font-mono uppercase text-zinc-500 block">
-                    Planned Exercises ({tpl.plannedExercises.length})
-                  </span>
-                  {tpl.plannedExercises.map((pe, idx) => {
-                    const ex = state.exercises.find((e) => e.id === pe.exerciseId);
-                    return (
-                      <div
-                        key={idx}
-                        className="p-2.5 rounded-lg bg-zinc-950 border border-zinc-800 text-xs font-mono flex items-center justify-between"
-                      >
-                        <span className="text-zinc-200">{ex?.name || 'Exercise'}</span>
-                        <span className="text-emerald-400 font-bold">
-                          {pe.plannedSets.length} sets
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
+                <button
+                  onClick={() => setEditingTemplate(tpl)}
+                  className="w-full mt-2 py-2 text-xs font-mono font-bold rounded-xl bg-zinc-800 hover:bg-zinc-700 text-emerald-400 transition flex items-center justify-center space-x-1.5"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                  <span>Configure Template</span>
+                </button>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Edit Template Modal */}
+      {editingTemplate && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-zinc-900 border border-zinc-800 sm:rounded-2xl rounded-t-2xl p-4 sm:p-6 max-w-2xl w-full h-[90vh] sm:h-auto max-h-[90vh] overflow-y-auto space-y-6 shadow-2xl flex flex-col justify-between">
+            <div className="space-y-5">
+              <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+                <div className="flex items-center space-x-2 text-emerald-400 font-mono">
+                  <Layers className="w-5 h-5" />
+                  <h3 className="text-base sm:text-lg font-bold text-zinc-100">
+                    Edit Workout Template
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setEditingTemplate(null)}
+                  className="p-1.5 rounded-lg bg-zinc-800 text-zinc-400 hover:text-zinc-200"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Template Name & Description */}
+              <div className="space-y-3 text-xs font-mono">
+                <div>
+                  <label className="text-zinc-400 uppercase font-bold text-[10px] block mb-1">
+                    Template Name
+                  </label>
+                  <input
+                    type="text"
+                    value={editingTemplate.name}
+                    onChange={(e) =>
+                      setEditingTemplate({ ...editingTemplate, name: e.target.value })
+                    }
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-zinc-100 font-bold focus:border-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-zinc-400 uppercase font-bold text-[10px] block mb-1">
+                    Description
+                  </label>
+                  <input
+                    type="text"
+                    value={editingTemplate.description}
+                    onChange={(e) =>
+                      setEditingTemplate({ ...editingTemplate, description: e.target.value })
+                    }
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-zinc-300 focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              {/* Planned Exercises Header */}
+              <div className="space-y-3 pt-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-mono font-bold uppercase text-zinc-300">
+                    Template Exercises ({editingTemplate.plannedExercises.length})
+                  </span>
+                  <button
+                    onClick={() => setShowAddTemplateExercisePicker(true)}
+                    className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-mono text-xs font-bold transition active:scale-95"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>ADD EXERCISE</span>
+                  </button>
+                </div>
+
+                {editingTemplate.plannedExercises.length === 0 ? (
+                  <div className="p-6 rounded-2xl bg-zinc-950 border border-dashed border-zinc-800 text-center space-y-2">
+                    <p className="text-xs font-mono text-zinc-500">
+                      No exercises in this template yet.
+                    </p>
+                    <button
+                      onClick={() => setShowAddTemplateExercisePicker(true)}
+                      className="inline-flex items-center space-x-1 px-3 py-1.5 rounded-xl bg-zinc-800 text-emerald-400 text-xs font-mono font-bold"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add First Exercise</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {editingTemplate.plannedExercises.map((pe, peIdx) => {
+                      const ex = state.exercises.find((e) => e.id === pe.exerciseId);
+                      return (
+                        <div
+                          key={pe.id}
+                          className="p-3 bg-zinc-950 border border-zinc-800 rounded-2xl space-y-2 text-xs font-mono"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-2">
+                              <span className="text-zinc-500 font-bold bg-zinc-900 px-2 py-0.5 rounded">
+                                #{peIdx + 1}
+                              </span>
+                              <span className="font-bold text-zinc-100">{ex?.name || 'Exercise'}</span>
+                            </div>
+                            <button
+                              onClick={() => handleRemoveExerciseFromTemplate(pe.id)}
+                              className="p-1 rounded text-rose-400 hover:bg-rose-950/40"
+                              title="Remove"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+
+                          <div className="text-[11px] text-zinc-400 flex items-center justify-between bg-zinc-900/60 p-2 rounded-xl">
+                            <span>Default Sets: {pe.plannedSets.length}</span>
+                            <span className="text-emerald-400 font-bold">
+                              {pe.plannedSets[0]?.plannedReps || 8} reps @ {pe.plannedSets[0]?.plannedWeight || 60} kg
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-between pt-4 border-t border-zinc-800 mt-4">
+              <button
+                onClick={() => handleDeleteTemplate(editingTemplate.id)}
+                className="px-3 py-2 text-xs font-mono font-bold text-rose-400 hover:bg-rose-950/30 rounded-xl transition"
+              >
+                Delete Template
+              </button>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => setEditingTemplate(null)}
+                  className="px-4 py-2 text-xs font-mono text-zinc-400 hover:text-zinc-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveTemplate}
+                  className="px-5 py-2.5 text-xs font-mono font-bold rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 transition active:scale-95 shadow-lg shadow-emerald-500/10"
+                >
+                  SAVE TEMPLATE
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Exercise to Template Modal Overlay */}
+      {showAddTemplateExercisePicker && (
+        <div className="fixed inset-0 z-[60] bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 max-w-lg w-full max-h-[80vh] flex flex-col justify-between space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <h3 className="text-sm font-bold text-zinc-100 font-mono">
+                Select Exercise for Template
+              </h3>
+              <button
+                onClick={() => setShowAddTemplateExercisePicker(false)}
+                className="text-zinc-400 hover:text-zinc-200"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="relative">
+              <Search className="w-4 h-4 text-zinc-500 absolute left-3 top-3" />
+              <input
+                type="text"
+                placeholder="Search exercises..."
+                value={templateExerciseSearchQuery}
+                onChange={(e) => setTemplateExerciseSearchQuery(e.target.value)}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl pl-9 pr-4 py-2 text-xs text-zinc-200 font-mono focus:outline-none"
+              />
+            </div>
+
+            <div className="overflow-y-auto space-y-2 max-h-[50vh] pr-1">
+              {state.exercises
+                .filter((ex) =>
+                  ex.name.toLowerCase().includes(templateExerciseSearchQuery.toLowerCase())
+                )
+                .map((ex) => (
+                  <button
+                    key={ex.id}
+                    onClick={() => handleAddExerciseToTemplate(ex)}
+                    className="w-full text-left p-3 rounded-xl bg-zinc-950 hover:bg-zinc-800/80 border border-zinc-800/80 flex items-center justify-between text-xs font-mono transition group"
+                  >
+                    <div>
+                      <div className="font-bold text-zinc-200 group-hover:text-emerald-400">
+                        {ex.name}
+                      </div>
+                      <div className="text-[10px] text-zinc-500">
+                        {ex.primaryMuscles.join(', ')} • {ex.equipment}
+                      </div>
+                    </div>
+                    <Plus className="w-4 h-4 text-emerald-400 shrink-0" />
+                  </button>
+                ))}
+            </div>
           </div>
         </div>
       )}
