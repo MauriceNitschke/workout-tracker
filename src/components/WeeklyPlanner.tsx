@@ -31,6 +31,7 @@ import {
   WeekStatus,
   WorkoutTemplate,
 } from '../types';
+import { notify } from '../lib/notifications';
 import { generateProgressiveOverloadDraft } from '../lib/prCalculator';
 
 interface WeeklyPlannerProps {
@@ -93,7 +94,10 @@ export const WeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
       : selectedWeek;
 
     if (!weekToUse || weekToUse.status === 'Locked') {
-      alert(`Cannot schedule to ${weekToUse?.id ? `Week ${weekToUse.isoWeek}` : 'this week'} because it is locked.`);
+      notify(
+        `Cannot schedule to ${weekToUse?.id ? `Week ${weekToUse.isoWeek}` : 'this week'} because it is locked.`,
+        'error'
+      );
       return;
     }
 
@@ -337,7 +341,7 @@ export const WeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
 
     onUpdateState({ ...state, scheduledWorkouts: updatedWorkouts });
     setShowOverloadModal(false);
-    alert('Progressive overload draft successfully applied to upcoming weeks!');
+    notify('Progressive overload draft successfully applied to upcoming weeks!');
   };
 
   return (

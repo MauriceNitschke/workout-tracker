@@ -17,6 +17,32 @@ export type WorkoutFeeling = 'Great' | 'Good' | 'Average' | 'Tough' | 'Exhausted
 
 export type RecoveryType = 'Sauna' | 'Stretching' | 'Mobility' | 'Yoga' | 'Massage' | 'Other';
 
+export type RouteId =
+  | 'today'
+  | 'plan'
+  | 'train'
+  | 'progress'
+  | 'streaks'
+  | 'exercises'
+  | 'recovery'
+  | 'account';
+
+export type SyncStatus =
+  | 'guest'
+  | 'loading'
+  | 'offline'
+  | 'saving'
+  | 'synced'
+  | 'error'
+  | 'needs-initialization';
+
+export interface CloudUser {
+  uid: string;
+  displayName: string | null;
+  email: string | null;
+  photoURL: string | null;
+}
+
 export interface TrainingProgram {
   id: string;
   name: string;

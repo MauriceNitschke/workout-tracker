@@ -66,6 +66,7 @@ export const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
   const [showAddTemplateExercisePicker, setShowAddTemplateExercisePicker] = useState(false);
   const [templateExerciseSearchQuery, setTemplateExerciseSearchQuery] = useState('');
   const [detailExerciseId, setDetailExerciseId] = useState<string | null>(null);
+  const [templatePendingDelete, setTemplatePendingDelete] = useState<string | null>(null);
 
   // Handle Create New Template
   const handleCreateNewTemplate = () => {
@@ -103,16 +104,20 @@ export const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
 
   // Handle Delete Template
   const handleDeleteTemplate = (tplId: string) => {
-    if (confirm('Are you sure you want to delete this workout template?')) {
-      const filtered = state.workoutTemplates.filter((t) => t.id !== tplId);
-      onUpdateState({
-        ...state,
-        workoutTemplates: filtered,
-      });
-      if (editingTemplate?.id === tplId) {
-        setEditingTemplate(null);
-      }
+    setTemplatePendingDelete(tplId);
+  };
+
+  const confirmDeleteTemplate = () => {
+    if (!templatePendingDelete) return;
+    const filtered = state.workoutTemplates.filter((t) => t.id !== templatePendingDelete);
+    onUpdateState({
+      ...state,
+      workoutTemplates: filtered,
+    });
+    if (editingTemplate?.id === templatePendingDelete) {
+      setEditingTemplate(null);
     }
+    setTemplatePendingDelete(null);
   };
 
   // Add exercise to template draft
@@ -1172,7 +1177,38 @@ export const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
           onEditExercise={(ex) => handleStartEdit(ex)}
         />
       )}
+
+      {templatePendingDelete && (
+        <div
+          className="mobile-sheet-layer items-center justify-center p-4"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="delete-template-title"
+        >
+          <div className="w-full max-w-sm rounded-2xl border border-zinc-700 bg-zinc-900 p-5 shadow-2xl">
+            <h2 id="delete-template-title" className="text-lg font-semibold text-zinc-100">
+              Delete workout template?
+            </h2>
+            <p className="mt-2 text-sm text-zinc-400">
+              Existing scheduled workouts remain available, but this template cannot be restored.
+            </p>
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <button
+                onClick={() => setTemplatePendingDelete(null)}
+                className="mobile-action secondary-action"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeleteTemplate}
+                className="mobile-action bg-rose-500 text-white"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
-
