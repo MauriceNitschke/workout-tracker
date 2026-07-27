@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   GoogleAuthProvider,
-  getRedirectResult,
   onAuthStateChanged,
   signInWithPopup,
-  signInWithRedirect,
   signOut,
 } from 'firebase/auth';
 import { AppState, CloudUser, SyncStatus } from '../types';
@@ -60,10 +58,6 @@ export function useCloudAccount({ state, setState }: UseCloudAccountOptions) {
 
   useEffect(() => {
     if (!auth) return;
-    void getRedirectResult(auth).catch((reason) => {
-      setError(reason instanceof Error ? reason.message : 'Google sign-in failed.');
-      setStatus('error');
-    });
 
     return onAuthStateChanged(auth, async (firebaseUser) => {
       unsubscribeCloud.current?.();
@@ -165,11 +159,10 @@ export function useCloudAccount({ state, setState }: UseCloudAccountOptions) {
     setStatus('loading');
     setError(null);
     const provider = new GoogleAuthProvider();
-    const standalone = window.matchMedia('(display-mode: standalone)').matches;
-    const mobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
     try {
-      if (standalone || mobile) await signInWithRedirect(auth, provider);
-      else await signInWithPopup(auth, provider);
+      // Redirect auth relies on cross-origin storage hosted at firebaseapp.com.
+      // Safari blocks that storage when this app is served from GitHub Pages.
+      await signInWithPopup(auth, provider);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Google sign-in failed.');
       setStatus('error');
@@ -235,8 +228,50 @@ export function useCloudAccount({ state, setState }: UseCloudAccountOptions) {
 
   const retrySync = useCallback(async () => {
     if (!user) return;
-    setStatus('saving');
+    setStatus(cloudReady.current ? 'saving' : 'loading');
+    setError(null);
     try {
+      // A device that never completed its initial cloud load must download the
+      // authoritative dataset. It must not upload its stale local state.
+      if (!cloudReady.current) {
+        const cloudState = await loadCloudState(user.uid);
+        if (!cloudState) {
+          setNeedsInitialization(true);
+          setStatus('needs-initialization');
+          return;
+        }
+
+        applyingCloud.current = true;
+        lastSavedJSON.current = JSON.stringify(cloudState);
+        lastCloudState.current = cloudState;
+        setState(cloudState);
+        applyingCloud.current = false;
+        cloudReady.current = true;
+        setStatus(navigator.onLine ? 'synced' : 'offline');
+        setLastSyncedAt(new Date().toISOString());
+
+        unsubscribeCloud.current?.();
+        unsubscribeCloud.current = subscribeToCloudState(
+          user.uid,
+          (nextState) => {
+            const serialized = JSON.stringify(nextState);
+            if (serialized === lastSavedJSON.current) return;
+            applyingCloud.current = true;
+            lastSavedJSON.current = serialized;
+            lastCloudState.current = nextState;
+            setState(nextState);
+            applyingCloud.current = false;
+            setStatus(navigator.onLine ? 'synced' : 'offline');
+            setLastSyncedAt(new Date().toISOString());
+          },
+          (syncError) => {
+            setError(syncError.message);
+            setStatus(navigator.onLine ? 'error' : 'offline');
+          }
+        );
+        return;
+      }
+
       await saveCloudState(user.uid, stateRef.current, lastCloudState.current ?? undefined);
       lastSavedJSON.current = JSON.stringify(stateRef.current);
       lastCloudState.current = stateRef.current;
@@ -247,7 +282,7 @@ export function useCloudAccount({ state, setState }: UseCloudAccountOptions) {
       setError(reason instanceof Error ? reason.message : 'Cloud save failed.');
       setStatus(navigator.onLine ? 'error' : 'offline');
     }
-  }, [user]);
+  }, [setState, user]);
 
   return {
     configured: isFirebaseConfigured,
