@@ -45,6 +45,25 @@ function userDoc(uid: string, ...segments: string[]) {
   return doc(requireDb(), 'users', uid, ...segments);
 }
 
+/**
+ * Firestore rejects `undefined` anywhere in a document. App records use
+ * optional properties, so omit those values recursively before writing while
+ * preserving arrays, nulls, and all defined values.
+ */
+function withoutUndefined(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(withoutUndefined);
+  }
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, nestedValue]) => nestedValue !== undefined)
+        .map(([key, nestedValue]) => [key, withoutUndefined(nestedValue)])
+    );
+  }
+  return value;
+}
+
 export async function cloudDatasetExists(uid: string): Promise<boolean> {
   return (await getDoc(userDoc(uid, 'meta', 'state'))).exists();
 }
@@ -93,7 +112,7 @@ async function synchronizeCollection(
     if (previous && JSON.stringify(previous) === JSON.stringify(record)) continue;
     operations.push((batch) =>
       batch.set(doc(reference, record.id), {
-        data: record,
+        data: withoutUndefined(record),
         schemaVersion: SCHEMA_VERSION,
         updatedAt: serverTimestamp(),
       })

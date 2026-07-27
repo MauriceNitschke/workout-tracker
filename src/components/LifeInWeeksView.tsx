@@ -287,6 +287,9 @@ export const LifeInWeeksView: React.FC<LifeInWeeksViewProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                 {MONTH_NAMES.map((monthName, monthIdx) => {
                   const daysInMonth = getDaysInMonth(year, monthIdx);
+                  // JavaScript uses Sunday = 0, while this calendar starts on Monday.
+                  const leadingBlankDays =
+                    (new Date(year, monthIdx, 1).getDay() + 6) % 7;
 
                   return (
                     <div
@@ -316,6 +319,13 @@ export const LifeInWeeksView: React.FC<LifeInWeeksViewProps> = ({
 
                       {/* 7-Column Day Tiles Grid */}
                       <div className="grid grid-cols-7 gap-1.5 justify-items-center">
+                        {Array.from({ length: leadingBlankDays }, (_, index) => (
+                          <span
+                            key={`blank-${index}`}
+                            aria-hidden="true"
+                            className="h-4 w-4 sm:h-5 sm:w-5 md:h-5.5 md:w-5.5"
+                          />
+                        ))}
                         {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((dayNum) => {
                           const detail = getDayDetailData(year, monthIdx, dayNum, state);
                           const isSelected = selectedDayDetail?.dateStr === detail.dateStr;
@@ -610,4 +620,3 @@ export const LifeInWeeksView: React.FC<LifeInWeeksViewProps> = ({
     </div>
   );
 };
-

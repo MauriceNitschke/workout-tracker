@@ -281,8 +281,9 @@ export const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
       progressionStrategy: newExStrategy,
       prMetric: newExMetric,
       category: newExCategory,
-      defaultNotes: newExDefaultNotes || undefined,
     };
+    const trimmedDefaultNotes = newExDefaultNotes.trim();
+    if (trimmedDefaultNotes) newEx.defaultNotes = trimmedDefaultNotes;
 
     onUpdateState({
       ...state,
@@ -323,8 +324,10 @@ export const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
       progressionStrategy: editExStrategy,
       prMetric: editExMetric,
       category: editExCategory,
-      defaultNotes: editExDefaultNotes || undefined,
     };
+    const trimmedDefaultNotes = editExDefaultNotes.trim();
+    if (trimmedDefaultNotes) updatedExercise.defaultNotes = trimmedDefaultNotes;
+    else delete updatedExercise.defaultNotes;
 
     const updatedExercises = state.exercises.map((ex) =>
       ex.id === editingExercise.id ? updatedExercise : ex

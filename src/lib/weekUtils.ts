@@ -92,6 +92,18 @@ export function getDaysInMonth(year: number, monthIndex: number): number {
 }
 
 /**
+ * Format a local calendar date without allowing UTC conversion to move it
+ * into the previous or next day.
+ */
+export function formatLocalDateISO(date: Date): string {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+
+/**
  * Get day detail data for a specific calendar date
  */
 export function getDayDetailData(
@@ -107,8 +119,7 @@ export function getDayDetailData(
   const dayOfWeek = dateObj.getDay(); // 0 = Sun
   const isSunday = dayOfWeek === 0;
 
-  const currentWeekObj = state.weeks.find((w) => w.status === 'In Progress');
-  const referenceToday = currentWeekObj ? '2026-07-26' : new Date().toISOString().slice(0, 10);
+  const referenceToday = formatLocalDateISO(new Date());
 
   const isToday = dateStr === referenceToday;
   const isFuture = dateStr > referenceToday;
