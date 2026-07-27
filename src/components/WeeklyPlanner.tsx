@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Plus,
   Trash2,
@@ -33,6 +33,7 @@ import {
 } from '../types';
 import { notify } from '../lib/notifications';
 import { generateProgressiveOverloadDraft } from '../lib/prCalculator';
+import { getCurrentISOWeekAndYear } from '../lib/weekUtils';
 
 interface WeeklyPlannerProps {
   state: AppState;
@@ -45,12 +46,42 @@ export const WeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
   onUpdateState,
   onStartWorkout,
 }) => {
-  // Currently selected week index or ID
-  const [selectedWeekId, setSelectedWeekId] = useState<string>(
-    state.weeks.find((w) => w.status === 'In Progress')?.id || state.weeks[0]?.id || ''
+  const sortedWeeks = useMemo(
+    () => [...state.weeks].sort((a, b) => a.year - b.year || a.isoWeek - b.isoWeek),
+    [state.weeks]
   );
+  const currentCalendarWeek = getCurrentISOWeekAndYear();
+  const preferredWeek =
+    sortedWeeks.find(
+      (week) =>
+        week.isoWeek === currentCalendarWeek.isoWeek &&
+        week.year === currentCalendarWeek.year
+    ) ||
+    sortedWeeks.find((week) => week.status === 'In Progress') ||
+    sortedWeeks.find((week) => week.status === 'Ready') ||
+    sortedWeeks.at(-1);
+  const [selectedWeekId, setSelectedWeekId] = useState<string>(preferredWeek?.id || '');
+  const selectedWeek =
+    sortedWeeks.find((week) => week.id === selectedWeekId) || preferredWeek;
+  const selectedWeekIndex = selectedWeek
+    ? sortedWeeks.findIndex((week) => week.id === selectedWeek.id)
+    : -1;
 
-  const selectedWeek = state.weeks.find((w) => w.id === selectedWeekId) || state.weeks[0];
+  useEffect(() => {
+    if (!selectedWeekId && preferredWeek) setSelectedWeekId(preferredWeek.id);
+    if (selectedWeekId && !state.weeks.some((week) => week.id === selectedWeekId) && preferredWeek) {
+      setSelectedWeekId(preferredWeek.id);
+    }
+  }, [preferredWeek, selectedWeekId, state.weeks]);
+
+  const goToCurrentWeek = () => {
+    const matchingWeek = sortedWeeks.find(
+      (week) =>
+        week.isoWeek === currentCalendarWeek.isoWeek &&
+        week.year === currentCalendarWeek.year
+    );
+    setSelectedWeekId((matchingWeek || preferredWeek)?.id || '');
+  };
 
   // Modals / Editors
   const [editingWorkout, setEditingWorkout] = useState<ScheduledWorkout | null>(null);
@@ -345,19 +376,19 @@ export const WeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
   };
 
   return (
-    <div className="space-y-8 pb-12">
+    <div className="space-y-5 pb-10 sm:space-y-8 sm:pb-12">
       {/* Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-900 p-4 sm:p-6">
         <div>
-          <div className="flex items-center space-x-2 text-zinc-400 text-xs font-mono uppercase tracking-wider mb-1">
+          <div className="mb-1 hidden items-center space-x-2 text-xs font-mono uppercase tracking-wider text-zinc-400 sm:flex">
             <span>WORKFLOW STAGE 1</span>
             <span>•</span>
             <span className="text-blue-400 font-semibold">DELIBERATE PLANNING</span>
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-zinc-100">
+          <h1 className="text-xl font-bold tracking-tight text-zinc-100 sm:text-2xl">
             Weekly Training Planner
           </h1>
-          <p className="text-sm text-zinc-400 mt-1">
+          <p className="mt-1 hidden text-sm text-zinc-400 sm:block">
             Plan planned values (sets, reps, weights) beforehand. Never overwrite original planned targets during execution.
           </p>
         </div>
@@ -365,70 +396,71 @@ export const WeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
         {/* Create Next Week Button */}
         <button
           onClick={handleCreateNextWeek}
-          className="flex items-center space-x-2 px-4 py-2.5 text-xs font-mono font-bold rounded-lg bg-emerald-500 hover:bg-emerald-400 text-zinc-950 transition shadow-lg shadow-emerald-500/10 shrink-0"
+          className="mobile-action shrink-0 bg-emerald-500 text-zinc-950 shadow-lg shadow-emerald-500/10 hover:bg-emerald-400"
         >
           <Plus className="w-4 h-4" />
-          <span>CREATE NEXT WEEK</span>
+          <span className="hidden sm:inline">CREATE NEXT WEEK</span>
+          <span className="sm:hidden">NEW WEEK</span>
         </button>
       </div>
 
       {/* Week Selector & Locking Controls */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 sm:p-5 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          {/* Week Tabs & Select Dropdown */}
-          <div className="flex items-center space-x-2 overflow-x-auto pb-1 max-w-full">
-            {state.weeks.map((w) => {
-              const isSelected = w.id === selectedWeek?.id;
-              return (
-                <button
-                  key={w.id}
-                  onClick={() => setSelectedWeekId(w.id)}
-                  className={`flex items-center space-x-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl font-mono text-xs font-semibold shrink-0 transition ${
-                    isSelected
-                      ? 'bg-emerald-500 text-zinc-950 shadow-md ring-2 ring-emerald-400/50'
-                      : 'bg-zinc-950 text-zinc-300 border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/60'
-                  }`}
-                >
-                  <span>W{w.isoWeek}</span>
-                  <span
-                    className={`px-1.5 py-0.5 text-[9px] uppercase font-bold rounded ${
-                      isSelected
-                        ? 'bg-zinc-950/30 text-zinc-950'
-                        : w.status === 'Locked'
-                        ? 'bg-amber-500/20 text-amber-400'
-                        : w.status === 'In Progress'
-                        ? 'bg-emerald-500/20 text-emerald-400'
-                        : 'bg-zinc-800 text-zinc-400'
-                    }`}
-                  >
-                    {w.status}
-                  </span>
-                </button>
-              );
-            })}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="grid grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-stretch gap-2 sm:w-[28rem]">
+            <button
+              type="button"
+              disabled={selectedWeekIndex <= 0}
+              onClick={() => setSelectedWeekId(sortedWeeks[selectedWeekIndex - 1]?.id || '')}
+              className="touch-target rounded-xl border border-zinc-700 bg-zinc-950 text-zinc-300 disabled:opacity-30"
+              aria-label="Previous week"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </button>
+            <label className="relative min-w-0 rounded-xl border border-emerald-500/35 bg-emerald-500/10 px-3 py-2">
+              <span className="block font-mono text-[9px] font-bold uppercase tracking-wider text-emerald-400">
+                Viewing week
+              </span>
+              <select
+                value={selectedWeek?.id || ''}
+                onChange={(event) => setSelectedWeekId(event.target.value)}
+                className="mt-0.5 w-full appearance-none bg-transparent pr-5 font-mono text-sm font-bold text-zinc-100 outline-none"
+                aria-label="Select training week"
+              >
+                {sortedWeeks.map((week) => (
+                  <option key={week.id} value={week.id} className="bg-zinc-900">
+                    W{week.isoWeek} · {week.year} · {week.status}
+                  </option>
+                ))}
+              </select>
+              <ChevronRight className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 rotate-90 text-zinc-500" />
+            </label>
+            <button
+              type="button"
+              disabled={selectedWeekIndex < 0 || selectedWeekIndex >= sortedWeeks.length - 1}
+              onClick={() => setSelectedWeekId(sortedWeeks[selectedWeekIndex + 1]?.id || '')}
+              className="touch-target rounded-xl border border-zinc-700 bg-zinc-950 text-zinc-300 disabled:opacity-30"
+              aria-label="Next week"
+            >
+              <ChevronRight className="h-5 w-5" />
+            </button>
           </div>
 
-          <div className="flex items-center space-x-2 shrink-0">
-            {/* Quick Mobile Dropdown */}
-            <select
-              value={selectedWeek?.id}
-              onChange={(e) => setSelectedWeekId(e.target.value)}
-              className="sm:hidden bg-zinc-950 border border-zinc-800 text-zinc-200 text-xs font-mono font-bold rounded-xl px-2.5 py-1.5"
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={goToCurrentWeek}
+              className="mobile-action secondary-action flex-1 sm:flex-none"
             >
-              {state.weeks.map((w) => (
-                <option key={w.id} value={w.id}>
-                  Week {w.isoWeek} ({w.status})
-                </option>
-              ))}
-            </select>
-
-            {/* Overload Generator Trigger */}
+              <CalendarIcon className="h-4 w-4 text-sky-400" />
+              This week
+            </button>
             <button
               onClick={() => setShowOverloadModal(true)}
-              className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-mono font-semibold rounded-xl bg-purple-500/10 text-purple-300 border border-purple-500/30 hover:bg-purple-500/20 transition shrink-0"
+              className="mobile-action flex-1 border border-purple-500/30 bg-purple-500/10 text-purple-300 sm:flex-none"
             >
               <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-              <span>4-WEEK OVERLOAD DRAFT</span>
+              <span>4-week draft</span>
             </button>
           </div>
         </div>
@@ -545,12 +577,12 @@ export const WeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
                   </button>
                 </div>
                 <p className="text-xs text-zinc-400">{tpl.description}</p>
-                <div className="flex items-center justify-between pt-1 border-t border-zinc-800/60 text-[11px] font-mono">
+                <div className="flex flex-col gap-2 border-t border-zinc-800/60 pt-2 text-[11px] font-mono sm:flex-row sm:items-center sm:justify-between">
                   <span className="text-zinc-500">
                     {tpl.plannedExercises.length} Exercises defined
                   </span>
                   {/* Target Week Picker per template */}
-                  <div className="flex items-center space-x-1">
+                  <div className="flex items-center gap-2">
                     <span className="text-zinc-500 text-[10px]">Schedule to:</span>
                     <select
                       onChange={(e) => {
@@ -559,7 +591,7 @@ export const WeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
                           e.target.value = '';
                         }
                       }}
-                      className="bg-zinc-950 border border-zinc-800 text-zinc-300 text-[10px] rounded px-1.5 py-0.5"
+                      className="min-h-10 min-w-0 flex-1 rounded-lg border border-zinc-800 bg-zinc-950 px-2 text-zinc-300 sm:min-h-0 sm:flex-none sm:py-1 text-[10px]"
                     >
                       <option value="">Choose week...</option>
                       {state.weeks.map((w) => (

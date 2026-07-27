@@ -59,6 +59,8 @@ export const LifeInWeeksView: React.FC<LifeInWeeksViewProps> = ({
         return base + 'bg-amber-500 hover:bg-amber-400 text-zinc-950 shadow-xs shadow-amber-500/20';
       case 'red':
         return base + 'bg-rose-500 hover:bg-rose-400 text-zinc-950 shadow-xs shadow-rose-500/20';
+      case 'planned':
+        return base + 'bg-zinc-500/70 hover:bg-zinc-400 text-zinc-100 border border-zinc-400/70';
       case 'blue':
         return base + 'bg-sky-500 hover:bg-sky-400 text-zinc-950 shadow-xs shadow-sky-500/20';
       case 'purple':
@@ -71,10 +73,29 @@ export const LifeInWeeksView: React.FC<LifeInWeeksViewProps> = ({
     }
   };
 
+  const today = new Date();
+  const currentYear = today.getFullYear();
+  const currentMonth = today.getMonth();
+  const currentMonday = new Date(today);
+  currentMonday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+  const currentWindowStart = new Date(currentMonday);
+  currentWindowStart.setDate(currentMonday.getDate() - 28);
+  const currentWindowDays = Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(currentWindowStart);
+    date.setDate(currentWindowStart.getDate() + index);
+    return date;
+  });
+
   const visibleYears =
     selectedYearFilter === 'all'
-      ? years
+      ? years.filter((year) => year <= currentYear).sort((a, b) => b - a)
       : years.filter((y) => y === selectedYearFilter);
+
+  const monthIndexesForYear = (year: number) => {
+    if (selectedYearFilter !== 'all') return MONTH_NAMES.map((_, index) => index);
+    const latestMonth = year === currentYear ? currentMonth - 1 : 11;
+    return Array.from({ length: Math.max(0, latestMonth + 1) }, (_, index) => latestMonth - index);
+  };
 
   return (
     <div className="space-y-8 pb-16">
@@ -212,52 +233,100 @@ export const LifeInWeeksView: React.FC<LifeInWeeksViewProps> = ({
         </div>
       </div>
 
-      {/* Color Priority Legend Bar */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 shadow-sm">
-        <div className="text-[11px] font-mono uppercase text-zinc-400 font-semibold mb-3 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center space-x-2">
+      {/* Compact, expandable color guide */}
+      <details className="group rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2 shadow-sm">
+        <summary className="flex min-h-8 cursor-pointer list-none items-center justify-between gap-3 text-[11px] font-mono font-semibold uppercase text-zinc-400">
+          <span className="flex items-center gap-2">
             <Info className="w-3.5 h-3.5 text-zinc-500" />
-            <span>DAY DOMINANT COLOR PRIORITY</span>
-          </div>
-          <span className="text-[10px] text-zinc-500 font-normal">
-            * Subtle gap after every Sunday indicates week boundaries
+            Color guide
           </span>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2.5 text-xs font-mono">
+          <span className="normal-case font-normal text-zinc-500 group-open:hidden">
+            Tap to expand
+          </span>
+        </summary>
+        <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-zinc-800 pt-3 text-[11px] font-mono sm:grid-cols-4">
           <div className="flex items-center space-x-2">
             <span className="w-3 h-3 rounded-[3px] bg-emerald-500 shrink-0"></span>
-            <span className="text-zinc-300">1. Strength Completed</span>
+            <span className="text-zinc-300">Completed</span>
           </div>
           <div className="flex items-center space-x-2">
             <span className="w-3 h-3 rounded-[3px] bg-amber-500 shrink-0"></span>
-            <span className="text-zinc-300">2. Strength Partial</span>
+            <span className="text-zinc-300">Partial</span>
           </div>
           <div className="flex items-center space-x-2">
             <span className="w-3 h-3 rounded-[3px] bg-rose-500 shrink-0"></span>
-            <span className="text-zinc-300">3. Strength Skipped</span>
+            <span className="text-zinc-300">Skipped</span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <span className="w-3 h-3 rounded-[3px] bg-zinc-500 shrink-0"></span>
+            <span className="text-zinc-300">Fully planned</span>
           </div>
           <div className="flex items-center space-x-2">
             <span className="w-3 h-3 rounded-[3px] bg-sky-500 shrink-0"></span>
-            <span className="text-zinc-300">4. Endurance</span>
+            <span className="text-zinc-300">Endurance</span>
           </div>
           <div className="flex items-center space-x-2">
             <span className="w-3 h-3 rounded-[3px] bg-purple-500 shrink-0"></span>
-            <span className="text-zinc-300">5. Recovery</span>
+            <span className="text-zinc-300">Recovery</span>
           </div>
           <div className="flex items-center space-x-2">
             <span className="w-3 h-3 rounded-[3px] bg-zinc-800 border border-zinc-700 shrink-0"></span>
-            <span className="text-zinc-400">6. No Activity</span>
+            <span className="text-zinc-400">No activity</span>
           </div>
           <div className="flex items-center space-x-2">
             <span className="w-3 h-3 rounded-[3px] bg-zinc-950 border border-zinc-800 opacity-40 shrink-0"></span>
-            <span className="text-zinc-500">7. Future Day</span>
+            <span className="text-zinc-500">Future</span>
           </div>
         </div>
-      </div>
+      </details>
 
       {/* Life in Weeks Matrix Grid - Day-by-Day Monthly Rows */}
       <div className="space-y-8">
+        <section className="rounded-2xl border border-emerald-500/25 bg-zinc-900 p-4 shadow-xl sm:p-6">
+          <div className="mb-4 flex items-end justify-between gap-3">
+            <div>
+              <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+                Recent month + next week
+              </p>
+              <h2 className="text-lg font-bold text-zinc-100">Current training window</h2>
+            </div>
+            <span className="text-right font-mono text-[10px] text-zinc-500">
+              {currentWindowDays[0].toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
+              {' – '}
+              {currentWindowDays.at(-1)?.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
+            </span>
+          </div>
+          <div className="grid grid-cols-7 text-center text-[9px] font-mono font-semibold uppercase text-zinc-500">
+            {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((label, index) => (
+              <span key={`${label}-${index}`}>{label}</span>
+            ))}
+          </div>
+          <div className="mt-2 grid grid-cols-7 justify-items-center gap-2">
+            {currentWindowDays.map((date) => {
+              const detail = getDayDetailData(
+                date.getFullYear(),
+                date.getMonth(),
+                date.getDate(),
+                state
+              );
+              return (
+                <button
+                  key={detail.dateStr}
+                  onClick={() => setSelectedDayDetail(detail)}
+                  title={`${detail.dateStr} (${detail.dayNameFull})\nStatus: ${detail.statusLabel}`}
+                  className={getDayTileClasses(
+                    detail.dominantColor,
+                    detail.isToday,
+                    selectedDayDetail?.dateStr === detail.dateStr
+                  )}
+                >
+                  {detail.isToday ? '•' : ''}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
         {visibleYears.map((year) => (
           <div
             key={year}
@@ -285,7 +354,8 @@ export const LifeInWeeksView: React.FC<LifeInWeeksViewProps> = ({
             {gridMode === 'compact-grid' ? (
               /* Compact Calendar-Style Grid (7 Columns per Month Card) */
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                {MONTH_NAMES.map((monthName, monthIdx) => {
+                {monthIndexesForYear(year).map((monthIdx) => {
+                  const monthName = MONTH_NAMES[monthIdx];
                   const daysInMonth = getDaysInMonth(year, monthIdx);
                   // JavaScript uses Sunday = 0, while this calendar starts on Monday.
                   const leadingBlankDays =
@@ -353,7 +423,8 @@ export const LifeInWeeksView: React.FC<LifeInWeeksViewProps> = ({
             ) : (
               /* Line Rows View (Horizontal Month Rows) */
               <div className="space-y-2.5 overflow-x-auto pb-2">
-                {MONTH_NAMES.map((monthName, monthIdx) => {
+                {monthIndexesForYear(year).map((monthIdx) => {
+                  const monthName = MONTH_NAMES[monthIdx];
                   const daysInMonth = getDaysInMonth(year, monthIdx);
 
                   return (

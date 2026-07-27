@@ -18,6 +18,7 @@ import {
   X,
 } from 'lucide-react';
 import { AppState, CloudUser, RouteId, SyncStatus } from '../types';
+import { getCurrentISOWeekAndYear } from '../lib/weekUtils';
 
 interface NavigationProps {
   currentRoute: RouteId;
@@ -82,7 +83,15 @@ export const Navigation: React.FC<NavigationProps> = ({
   const activeWorkout = state.scheduledWorkouts.find(
     (workout) => workout.id === state.activeWorkoutId || workout.status === 'Started'
   );
-  const currentWeek = state.weeks.find((week) => week.status === 'In Progress') || state.weeks[0];
+  const currentCalendarWeek = getCurrentISOWeekAndYear();
+  const currentWeek =
+    state.weeks.find(
+      (week) =>
+        week.isoWeek === currentCalendarWeek.isoWeek &&
+        week.year === currentCalendarWeek.year
+    ) ||
+    state.weeks.find((week) => week.status === 'In Progress') ||
+    state.weeks[0];
   const secondaryActive = secondaryTabs.some((tab) => tab.id === currentRoute);
 
   useEffect(() => {
@@ -118,9 +127,11 @@ export const Navigation: React.FC<NavigationProps> = ({
               className="flex min-h-11 items-center gap-2.5 rounded-xl text-left sm:gap-3"
               aria-label="Go to Today"
             >
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500 text-zinc-950 shadow-lg shadow-emerald-500/20">
-                <Dumbbell className="h-5 w-5" />
-              </span>
+              <img
+                src="./icon-192.png"
+                alt=""
+                className="h-9 w-9 shrink-0 rounded-xl shadow-lg shadow-emerald-500/15"
+              />
               <span>
                 <span className="flex items-center gap-2">
                   <span className="font-mono text-xs font-extrabold tracking-tight sm:text-sm">

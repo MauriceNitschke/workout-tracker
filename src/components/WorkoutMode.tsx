@@ -244,14 +244,14 @@ export const WorkoutMode: React.FC<WorkoutModeProps> = ({
   const e1rm = calculateE1RM(loggedWeight, loggedReps);
 
   return (
-    <div className="min-h-[85vh] flex flex-col justify-between max-w-3xl mx-auto py-2">
+    <div className="mx-auto flex min-h-[calc(100dvh-var(--mobile-dock-height)-5.5rem)] max-w-3xl flex-col justify-between py-1 sm:min-h-[85vh] sm:py-2">
       {/* Top Bar: Title & Exit */}
-      <div className="flex items-center justify-between pb-4 border-b border-zinc-800">
-        <div>
-          <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-400">
+      <div className="flex items-center justify-between border-b border-zinc-800 pb-2 sm:pb-4">
+        <div className="min-w-0">
+          <span className="hidden text-[10px] font-mono uppercase tracking-widest text-emerald-400 sm:block">
             DISTRACTION-FREE WORKOUT MODE
           </span>
-          <h1 className="text-xl font-extrabold text-zinc-100 tracking-tight">
+          <h1 className="truncate text-base font-extrabold tracking-tight text-zinc-100 sm:text-xl">
             {activeWorkout.title}
           </h1>
         </div>
@@ -333,9 +333,9 @@ export const WorkoutMode: React.FC<WorkoutModeProps> = ({
         </div>
       ) : (
         /* Active Focus View */
-        <div className="my-auto space-y-8 py-4">
+        <div className="space-y-3 py-2 sm:my-auto sm:space-y-8 sm:py-4">
           {/* Exercise Stepper & Selector */}
-          <div className="flex items-center justify-between bg-zinc-900 border border-zinc-800 p-2 rounded-xl">
+          <div className="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-900 p-1 sm:p-2">
             <button
               disabled={currentExerciseIndex === 0}
               onClick={() => {
@@ -366,9 +366,9 @@ export const WorkoutMode: React.FC<WorkoutModeProps> = ({
           </div>
 
           {/* Current Exercise Focus Card */}
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 sm:p-8 space-y-6 shadow-2xl">
+          <div className="space-y-3 rounded-2xl border border-zinc-800 bg-zinc-900 p-3 shadow-2xl sm:space-y-6 sm:p-8">
             <div>
-              <div className="flex items-center justify-between">
+              <div className="hidden items-center justify-between sm:flex">
                 <span className="text-xs font-mono text-zinc-400 uppercase tracking-wider">
                   {currentExerciseDef?.primaryMuscles.join(', ')} • {currentExerciseDef?.equipment}
                 </span>
@@ -376,11 +376,11 @@ export const WorkoutMode: React.FC<WorkoutModeProps> = ({
                   Target: {currentPlannedExercise.plannedSets.length} sets
                 </span>
               </div>
-              <h2 className="text-3xl font-black text-zinc-100 tracking-tight mt-1">
+              <h2 className="mt-0.5 text-2xl font-black tracking-tight text-zinc-100 sm:mt-1 sm:text-3xl">
                 {currentExerciseDef?.name || 'Exercise'}
               </h2>
               {currentPlannedExercise.plannedNotes && (
-                <p className="text-xs text-amber-400/90 font-mono mt-2 bg-amber-500/10 p-2 rounded border border-amber-500/20">
+                <p className="mt-1 line-clamp-2 rounded border border-amber-500/20 bg-amber-500/10 p-1.5 font-mono text-[10px] text-amber-400/90 sm:mt-2 sm:p-2 sm:text-xs">
                   Note: {currentPlannedExercise.plannedNotes}
                 </p>
               )}
@@ -396,7 +396,7 @@ export const WorkoutMode: React.FC<WorkoutModeProps> = ({
                   <button
                     key={ps.setNumber}
                     onClick={() => setCurrentSetIndex(idx)}
-                    className={`flex-1 min-w-[70px] py-2.5 px-3 rounded-xl border font-mono text-xs text-center transition ${
+                    className={`min-w-[60px] flex-1 rounded-xl border px-2 py-1.5 text-center font-mono text-xs transition sm:min-w-[70px] sm:px-3 sm:py-2.5 ${
                       isSelected
                         ? 'bg-zinc-800 border-zinc-600 text-zinc-100 ring-2 ring-emerald-500/50'
                         : isCompleted
@@ -414,22 +414,22 @@ export const WorkoutMode: React.FC<WorkoutModeProps> = ({
             </div>
 
             {/* Massive Interactive Set Logger */}
-            <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-6 space-y-6">
-              <div className="flex items-center justify-between text-xs font-mono text-zinc-400 border-b border-zinc-900 pb-3">
+            <div className="space-y-3 rounded-xl border border-zinc-800 bg-zinc-950 p-3 sm:space-y-6 sm:p-6">
+              <div className="flex items-center justify-between border-b border-zinc-900 pb-2 font-mono text-[10px] text-zinc-400 sm:pb-3 sm:text-xs">
                 <span>SET #{currentSetIndex + 1} LOGGING</span>
                 <span>PLANNED: {plannedSet?.plannedReps} reps @ {plannedSet?.plannedWeight} kg</span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              <div className="grid grid-cols-2 gap-3 sm:gap-6">
                 {/* Reps Input */}
                 <div className="space-y-2">
-                  <label className="text-xs font-mono text-zinc-400 uppercase block text-center">
+                  <label className="block text-center font-mono text-[10px] uppercase text-zinc-400 sm:text-xs">
                     REPS COMPLETED
                   </label>
-                  <div className="flex items-center justify-center space-x-2">
+                  <div className="flex items-center justify-center gap-1 sm:gap-2">
                     <button
                       onClick={() => setLoggedReps(Math.max(1, loggedReps - 1))}
-                      className="w-12 h-12 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-200 text-xl font-bold active:scale-90 transition hover:bg-zinc-800"
+                      className="h-10 w-10 rounded-xl border border-zinc-800 bg-zinc-900 text-lg font-bold text-zinc-200 transition hover:bg-zinc-800 active:scale-90 sm:h-12 sm:w-12 sm:text-xl"
                     >
                       -
                     </button>
@@ -437,17 +437,17 @@ export const WorkoutMode: React.FC<WorkoutModeProps> = ({
                       type="number"
                       value={loggedReps}
                       onChange={(e) => setLoggedReps(Number(e.target.value))}
-                      className="w-24 text-center text-4xl font-black font-mono bg-zinc-900 border border-zinc-800 rounded-xl py-2 text-emerald-400 focus:outline-none focus:border-emerald-500"
+                      className="w-16 rounded-xl border border-zinc-800 bg-zinc-900 py-1.5 text-center font-mono text-2xl font-black text-emerald-400 focus:border-emerald-500 focus:outline-none sm:w-24 sm:py-2 sm:text-4xl"
                     />
                     <button
                       onClick={() => setLoggedReps(loggedReps + 1)}
-                      className="w-12 h-12 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-200 text-xl font-bold active:scale-90 transition hover:bg-zinc-800"
+                      className="h-10 w-10 rounded-xl border border-zinc-800 bg-zinc-900 text-lg font-bold text-zinc-200 transition hover:bg-zinc-800 active:scale-90 sm:h-12 sm:w-12 sm:text-xl"
                     >
                       +
                     </button>
                   </div>
                   {/* Quick Reps Increment Chips */}
-                  <div className="flex items-center justify-center space-x-1.5 pt-1">
+                  <div className="hidden items-center justify-center space-x-1.5 pt-1 sm:flex">
                     {[-2, -1, +1, +2].map((delta) => (
                       <button
                         key={`rep-${delta}`}
@@ -463,13 +463,13 @@ export const WorkoutMode: React.FC<WorkoutModeProps> = ({
 
                 {/* Weight Input */}
                 <div className="space-y-2">
-                  <label className="text-xs font-mono text-zinc-400 uppercase block text-center">
+                  <label className="block text-center font-mono text-[10px] uppercase text-zinc-400 sm:text-xs">
                     WEIGHT (KG)
                   </label>
-                  <div className="flex items-center justify-center space-x-2">
+                  <div className="flex items-center justify-center gap-1 sm:gap-2">
                     <button
                       onClick={() => setLoggedWeight(Math.max(0, loggedWeight - 2.5))}
-                      className="w-12 h-12 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-200 text-xl font-bold active:scale-90 transition hover:bg-zinc-800"
+                      className="h-10 w-10 rounded-xl border border-zinc-800 bg-zinc-900 text-lg font-bold text-zinc-200 transition hover:bg-zinc-800 active:scale-90 sm:h-12 sm:w-12 sm:text-xl"
                     >
                       -
                     </button>
@@ -478,17 +478,17 @@ export const WorkoutMode: React.FC<WorkoutModeProps> = ({
                       step="0.5"
                       value={loggedWeight}
                       onChange={(e) => setLoggedWeight(Number(e.target.value))}
-                      className="w-24 text-center text-4xl font-black font-mono bg-zinc-900 border border-zinc-800 rounded-xl py-2 text-zinc-100 focus:outline-none focus:border-zinc-600"
+                      className="w-16 rounded-xl border border-zinc-800 bg-zinc-900 py-1.5 text-center font-mono text-2xl font-black text-zinc-100 focus:border-zinc-600 focus:outline-none sm:w-24 sm:py-2 sm:text-4xl"
                     />
                     <button
                       onClick={() => setLoggedWeight(loggedWeight + 2.5)}
-                      className="w-12 h-12 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-200 text-xl font-bold active:scale-90 transition hover:bg-zinc-800"
+                      className="h-10 w-10 rounded-xl border border-zinc-800 bg-zinc-900 text-lg font-bold text-zinc-200 transition hover:bg-zinc-800 active:scale-90 sm:h-12 sm:w-12 sm:text-xl"
                     >
                       +
                     </button>
                   </div>
                   {/* Quick Weight Increment Chips */}
-                  <div className="flex items-center justify-center space-x-1.5 pt-1 flex-wrap gap-y-1">
+                  <div className="hidden items-center justify-center space-x-1.5 pt-1 flex-wrap gap-y-1 sm:flex">
                     {[-5, -2.5, -1, +1, +2.5, +5].map((delta) => (
                       <button
                         key={`w-${delta}`}
@@ -505,7 +505,7 @@ export const WorkoutMode: React.FC<WorkoutModeProps> = ({
 
               {/* Estimated 1RM Preview */}
               {e1rm > 0 && (
-                <div className="text-center text-xs font-mono text-zinc-500">
+                <div className="hidden text-center text-xs font-mono text-zinc-500 sm:block">
                   Estimated 1RM for this set: <span className="text-purple-400 font-bold">~{e1rm} kg</span>
                 </div>
               )}
@@ -513,7 +513,7 @@ export const WorkoutMode: React.FC<WorkoutModeProps> = ({
               {/* MASSIVE COMPLETE SET BUTTON */}
               <button
                 onClick={handleCompleteSet}
-                className="w-full py-5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-mono font-black text-lg tracking-wider transition-all transform active:scale-[0.98] shadow-xl shadow-emerald-500/20 flex items-center justify-center space-x-3"
+                className="sticky bottom-[calc(var(--mobile-dock-height)+0.5rem)] z-20 flex w-full items-center justify-center space-x-2 rounded-2xl bg-emerald-500 py-3 font-mono text-sm font-black tracking-wider text-zinc-950 shadow-xl shadow-emerald-500/20 transition-all hover:bg-emerald-400 active:scale-[0.98] sm:static sm:space-x-3 sm:py-5 sm:text-lg"
               >
                 <Check className="w-6 h-6 stroke-[3]" />
                 <span>COMPLETE SET #{currentSetIndex + 1}</span>

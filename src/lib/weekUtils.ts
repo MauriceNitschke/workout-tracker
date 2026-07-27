@@ -10,6 +10,7 @@ export type WeekDominantColor =
   | 'green'   // Strength workouts completed as planned
   | 'yellow'  // Strength workouts planned but not fully completed
   | 'red'     // Strength workout skipped completely or 0 executed
+  | 'planned' // Fully planned, but execution has not started
   | 'blue'    // Endurance activity
   | 'purple'  // Recovery / Mobility activity
   | 'gray'    // No activities (Past week)
@@ -19,6 +20,7 @@ export type DayDominantColor =
   | 'green'   // Strength completed on this day
   | 'yellow'  // Strength partial/started/planned on this day
   | 'red'     // Strength skipped on this day
+  | 'planned' // Fully planned, but execution has not started
   | 'blue'    // Endurance activity on this day
   | 'purple'  // Recovery activity on this day
   | 'gray'    // No activity (past day)
@@ -127,16 +129,6 @@ export function getDayDetailData(
   // Filter workouts for this date
   const scheduledWorkouts = state.scheduledWorkouts.filter((sw) => {
     if (sw.date === dateStr) return true;
-    if (!sw.date) {
-      const parentWeek = state.weeks.find((w) => w.id === sw.weekId);
-      if (parentWeek && parentWeek.year === year) {
-        const monday = getMondayOfISOWeek(parentWeek.isoWeek, year);
-        const dayOffset = (dayOfWeek + 6) % 7;
-        const workoutDate = new Date(monday);
-        workoutDate.setUTCDate(monday.getUTCDate() + dayOffset);
-        return formatDateISO(workoutDate) === dateStr;
-      }
-    }
     return false;
   });
 
@@ -157,6 +149,26 @@ export function getDayDetailData(
       (sw) => sw.status === 'Partial' || sw.status === 'Started'
     );
     const hasSkipped = scheduledWorkouts.some((sw) => sw.status === 'Skipped');
+    const hasFullyPlanned = scheduledWorkouts.some((sw) => {
+      const parentWeek = state.weeks.find((week) => week.id === sw.weekId);
+      return (
+        sw.status === 'Planned' &&
+        parentWeek?.status !== 'Planning' &&
+        Boolean(sw.date) &&
+        sw.plannedExercises.length > 0 &&
+        sw.plannedExercises.every(
+          (exercise) =>
+            exercise.plannedSets.length > 0 &&
+            exercise.plannedSets.every(
+              (set) =>
+                Number.isFinite(set.plannedReps) &&
+                set.plannedReps > 0 &&
+                Number.isFinite(set.plannedWeight) &&
+                set.plannedWeight >= 0
+            )
+        )
+      );
+    });
 
     if (hasCompleted) {
       dominantColor = 'green';
@@ -167,9 +179,12 @@ export function getDayDetailData(
     } else if (hasSkipped) {
       dominantColor = 'red';
       statusLabel = 'Strength Workout Skipped';
-    } else {
-      dominantColor = 'yellow';
-      statusLabel = 'Strength Workout Planned';
+    } else if (hasFullyPlanned) {
+      dominantColor = 'planned';
+      statusLabel = 'Strength Workout Fully Planned';
+    } else if (isFuture) {
+      dominantColor = 'future';
+      statusLabel = 'Workout Draft / Future Day';
     }
   } else if (enduranceActivities.length > 0) {
     dominantColor = 'blue';
@@ -342,12 +357,18 @@ export function getWeekDetailData(
     } else if (completedCount > 0 || partialCount > 0 || startedCount > 0) {
       dominantColor = 'yellow';
       statusLabel = 'Strength Partially Completed';
-    } else if (skippedCount === scheduledWorkouts.length || (scheduledWorkouts.length > 0 && completedCount === 0)) {
+    } else if (skippedCount === scheduledWorkouts.length) {
       dominantColor = 'red';
-      statusLabel = 'Strength Skipped / Unexecuted';
+      statusLabel = 'Strength Skipped';
+    } else if (
+      scheduledWorkouts.some((workout) => workout.status === 'Planned') &&
+      trainingWeek?.status !== 'Planning'
+    ) {
+      dominantColor = 'planned';
+      statusLabel = 'Strength Fully Planned';
     } else {
-      dominantColor = 'yellow';
-      statusLabel = 'Strength Planned';
+      dominantColor = isFuture ? 'future' : 'gray';
+      statusLabel = 'Planning Draft';
     }
   } else if (enduranceActivities.length > 0) {
     dominantColor = 'blue';

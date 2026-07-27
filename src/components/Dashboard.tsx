@@ -22,6 +22,7 @@ import {
   calculatePersonalRecords,
   calculatePlannedVolume,
 } from '../lib/prCalculator';
+import { getCurrentISOWeekAndYear } from '../lib/weekUtils';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -46,7 +47,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const prs = calculatePersonalRecords(state);
 
   // Current Week (In Progress or current)
+  const currentCalendarWeek = getCurrentISOWeekAndYear();
   const currentWeek =
+    state.weeks.find(
+      (week) =>
+        week.isoWeek === currentCalendarWeek.isoWeek &&
+        week.year === currentCalendarWeek.year
+    ) ||
     state.weeks.find((w) => w.status === 'In Progress') ||
     state.weeks.find((w) => w.status === 'Ready') ||
     state.weeks[state.weeks.length - 1];
@@ -82,21 +89,23 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const prEntries = Object.values(prs);
 
   return (
-    <div className="space-y-8 pb-12">
+    <div className="space-y-5 pb-8 sm:space-y-8 sm:pb-12">
       {/* Header Banner */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-zinc-900 border border-zinc-800 rounded-2xl p-4 sm:p-6">
-        <div>
+      <div className="flex items-center justify-between gap-3 rounded-2xl border border-zinc-800 bg-zinc-900 p-4 sm:p-6">
+        <div className="min-w-0">
           <div className="flex items-center space-x-2 text-zinc-400 text-xs font-mono uppercase tracking-wider mb-1">
-            <span>ACTIVE PROGRAM</span>
+            <span className="sm:hidden">TODAY</span>
+            <span className="hidden sm:inline">ACTIVE PROGRAM</span>
             <span>•</span>
             <span className="text-emerald-400 font-semibold truncate">
               {state.programs[0]?.name || 'Summer Hypertrophy 2026'}
             </span>
           </div>
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-zinc-100">
-            Training Dashboard
+            <span className="sm:hidden">Ready to train?</span>
+            <span className="hidden sm:inline">Training Dashboard</span>
           </h1>
-          <p className="text-xs sm:text-sm text-zinc-400 mt-1 max-w-2xl">
+          <p className="mt-1 hidden max-w-2xl text-sm text-zinc-400 sm:block">
             Focus on execution and consistency. Every workout is planned in advance, executed with precision, and manually progressed.
           </p>
         </div>
@@ -104,18 +113,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
         <div className="flex items-center space-x-3 shrink-0">
           <button
             onClick={() => onNavigateTab('planner')}
-            className="w-full sm:w-auto flex items-center justify-center space-x-2 px-4 py-2.5 text-xs font-mono font-medium rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 transition"
+            className="touch-target shrink-0 rounded-xl border border-zinc-700 bg-zinc-800 px-3 text-xs font-mono font-medium text-zinc-100 transition hover:bg-zinc-700 sm:w-auto sm:px-4"
           >
             <Calendar className="w-4 h-4 text-zinc-400" />
-            <span>PLAN NEXT WEEK</span>
+            <span className="hidden sm:inline">PLAN NEXT WEEK</span>
+            <span className="sm:hidden">PLAN</span>
           </button>
         </div>
       </div>
 
       {/* Primary KPI Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         {/* KPI 1: Consistency (Primary KPI) */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 relative overflow-hidden">
+        <div className="order-2 bg-zinc-900 border border-zinc-800 rounded-2xl p-3.5 sm:order-none sm:p-4 relative overflow-hidden">
           <div className="flex items-center justify-between">
             <span className="text-[10px] sm:text-xs font-mono text-zinc-400 uppercase tracking-wider truncate">
               CONSISTENCY
@@ -141,7 +151,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
 
         {/* KPI 2: Active Week */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
+        <div className="order-3 bg-zinc-900 border border-zinc-800 rounded-2xl p-3.5 sm:order-none sm:p-4">
           <div className="flex items-center justify-between">
             <span className="text-[10px] sm:text-xs font-mono text-zinc-400 uppercase tracking-wider truncate">
               CURRENT WEEK
@@ -172,7 +182,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
 
         {/* KPI 3: Personal Records */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
+        <div className="hidden bg-zinc-900 border border-zinc-800 rounded-2xl p-4 sm:block">
           <div className="flex items-center justify-between">
             <span className="text-[10px] sm:text-xs font-mono text-zinc-400 uppercase tracking-wider truncate">
               PRs TRACKED
@@ -191,7 +201,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
 
         {/* KPI 4: Workout Mode Action */}
-        <div className="col-span-2 sm:col-span-1 bg-gradient-to-br from-zinc-900 to-zinc-950 border border-zinc-800 rounded-2xl p-4 flex flex-col justify-between">
+        <div className="order-1 col-span-2 flex flex-col justify-between rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-950/30 to-zinc-950 p-4 sm:order-none sm:col-span-1">
           <div className="flex items-center justify-between">
             <span className="text-[10px] sm:text-xs font-mono text-zinc-400 uppercase tracking-wider">
               QUICK EXECUTION
@@ -221,26 +231,31 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
 
       {/* Main Grid: Current Week Schedule + Volume Trend */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3 lg:gap-8">
         {/* Left Column: Scheduled Workouts for Current Week (2 cols) */}
         <div className="lg:col-span-2 space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-bold text-zinc-100 tracking-tight flex items-center space-x-2">
+              <h2 className="flex items-center gap-2 text-base font-bold tracking-tight text-zinc-100 sm:text-lg">
                 <span>Current Week Schedule</span>
-                <span className="text-xs font-mono font-normal text-zinc-400">
+                <span className="hidden text-xs font-mono font-normal text-zinc-400 sm:inline">
                   (ISO Week {currentWeek?.isoWeek})
                 </span>
+                <span className="font-mono text-[10px] font-normal text-zinc-500 sm:hidden">
+                  W{currentWeek?.isoWeek}
+                </span>
               </h2>
-              <p className="text-xs text-zinc-400 mt-0.5">
+              <p className="mt-0.5 hidden text-xs text-zinc-400 sm:block">
                 Execute planned sessions with minimal friction.
               </p>
             </div>
             <button
               onClick={() => onNavigateTab('planner')}
-              className="text-xs text-zinc-400 hover:text-zinc-200 flex items-center space-x-1 font-mono"
+              className="touch-target shrink-0 rounded-xl text-xs text-zinc-400 hover:text-zinc-200 sm:min-h-0 sm:space-x-1 sm:px-0 font-mono"
+              aria-label="Manage week plan"
             >
-              <span>Manage Week Plan</span>
+              <span className="hidden sm:inline">Manage Week Plan</span>
+              <span className="sm:hidden">Plan</span>
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -258,7 +273,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 return (
                   <div
                     key={sw.id}
-                    className={`bg-zinc-900 border rounded-xl p-5 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
+                    className={`bg-zinc-900 border rounded-xl p-4 sm:p-5 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 ${
                       isCompleted
                         ? 'border-zinc-800/80 bg-zinc-900/50'
                         : isStarted
