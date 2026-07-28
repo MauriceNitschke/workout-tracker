@@ -10,6 +10,9 @@ import {
   Sparkles,
   Trophy,
   X,
+  Pause,
+  TimerReset,
+  Undo2,
 } from 'lucide-react';
 import {
   AppState,
@@ -20,8 +23,18 @@ import {
   SetExecution,
   WorkoutExecution,
   WorkoutFeeling,
+  RIR,
 } from '../types';
 import { calculateE1RM } from '../lib/prCalculator';
+import { getNextWorkoutPosition } from '../lib/workoutFlow';
+import {
+  addRestSeconds,
+  getRestSecondsRemaining,
+  pauseRestTimer,
+  resumeRestTimer,
+  startRestTimer,
+  type RestTimerState,
+} from '../lib/restTimer';
 
 interface WorkoutModeProps {
   state: AppState;
@@ -59,6 +72,12 @@ export const WorkoutMode: React.FC<WorkoutModeProps> = ({
   // Live input values for the active set
   const [loggedReps, setLoggedReps] = useState<number>(0);
   const [loggedWeight, setLoggedWeight] = useState<number>(0);
+  const [restTimer, setRestTimer] = useState<RestTimerState | null>(null);
+  const [timerNow, setTimerNow] = useState(Date.now());
+  const [lastCompleted, setLastCompleted] = useState<{
+    exerciseIndex: number;
+    setIndex: number;
+  } | null>(null);
 
   // Initialize executions from planned exercises when activeWorkout changes
   useEffect(() => {
@@ -98,7 +117,52 @@ export const WorkoutMode: React.FC<WorkoutModeProps> = ({
     }
     setCurrentExerciseIndex(0);
     setCurrentSetIndex(0);
+    try {
+      const saved = localStorage.getItem(`training-os-rest-${activeWorkout.id}`);
+      if (saved) setRestTimer(JSON.parse(saved));
+    } catch {
+      setRestTimer(null);
+    }
   }, [activeWorkout?.id]);
+
+  useEffect(() => {
+    if (!activeWorkout) return;
+    const key = `training-os-rest-${activeWorkout.id}`;
+    if (restTimer) localStorage.setItem(key, JSON.stringify(restTimer));
+    else localStorage.removeItem(key);
+  }, [activeWorkout?.id, restTimer]);
+
+  useEffect(() => {
+    if (!restTimer || restTimer.pausedRemaining !== undefined) return;
+    const interval = window.setInterval(() => setTimerNow(Date.now()), 250);
+    return () => window.clearInterval(interval);
+  }, [restTimer?.endsAt, restTimer?.pausedRemaining]);
+
+  const timerRemaining = restTimer ? getRestSecondsRemaining(restTimer, timerNow) : 0;
+
+  useEffect(() => {
+    if (!restTimer || timerRemaining !== 0 || restTimer.pausedRemaining !== undefined) return;
+    if (state.preferences.timerSound) {
+      try {
+        const AudioContextClass = window.AudioContext ||
+          (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (AudioContextClass) {
+          const context = new AudioContextClass();
+          const oscillator = context.createOscillator();
+          const gain = context.createGain();
+          oscillator.frequency.value = 880;
+          gain.gain.value = 0.08;
+          oscillator.connect(gain);
+          gain.connect(context.destination);
+          oscillator.start();
+          oscillator.stop(context.currentTime + 0.22);
+        }
+      } catch {
+        // The visible timer remains the reliable fallback.
+      }
+    }
+    if (state.preferences.timerVibration && 'vibrate' in navigator) navigator.vibrate([150, 80, 150]);
+  }, [timerRemaining, restTimer?.endsAt]);
 
   // Sync active set inputs with planned / logged values
   const currentPlannedExercise: PlannedExercise | undefined =
@@ -113,6 +177,15 @@ export const WorkoutMode: React.FC<WorkoutModeProps> = ({
 
   const currentSetExec: SetExecution | undefined =
     currentExec?.setExecutions[currentSetIndex];
+
+  const previousComparableSet = [...state.workoutExecutions]
+    .reverse()
+    .flatMap((execution) => execution.exerciseExecutions)
+    .find((execution) => execution.exerciseId === currentExerciseDef?.id)
+    ?.setExecutions[currentSetIndex];
+  const pendingSuggestion = state.progressionRecommendations.find(
+    (item) => item.exerciseId === currentExerciseDef?.id && item.status === 'pending'
+  );
 
   useEffect(() => {
     if (currentSetExec) {
@@ -134,7 +207,10 @@ export const WorkoutMode: React.FC<WorkoutModeProps> = ({
           Select a planned workout from the Weekly Plan or Dashboard to enter Workout Mode.
         </p>
         <button
-          onClick={onCancelWorkout}
+          onClick={() => {
+            setRestTimer(null);
+            onCancelWorkout();
+          }}
           className="px-4 py-2 text-xs font-mono rounded-lg bg-zinc-800 text-zinc-100 hover:bg-zinc-700"
         >
           Return to Dashboard
@@ -146,6 +222,7 @@ export const WorkoutMode: React.FC<WorkoutModeProps> = ({
   // Handle set completion
   const handleCompleteSet = () => {
     if (!currentExec || !currentSetExec) return;
+    if (currentSetExec.completed || !Number.isFinite(loggedReps) || !Number.isFinite(loggedWeight)) return;
 
     // Update current set as completed with logged values
     const updatedExecutions = exerciseExecutions.map((ee, exIdx) => {
@@ -171,21 +248,57 @@ export const WorkoutMode: React.FC<WorkoutModeProps> = ({
     });
 
     setExerciseExecutions(updatedExecutions);
+    setLastCompleted({ exerciseIndex: currentExerciseIndex, setIndex: currentSetIndex });
 
-    // Auto-advance logic:
-    // 1. Next set in current exercise
-    if (currentSetIndex < currentPlannedExercise.plannedSets.length - 1) {
-      setCurrentSetIndex(currentSetIndex + 1);
-    } else {
-      // 2. All sets in this exercise completed -> move to next exercise
-      if (currentExerciseIndex < activeWorkout.plannedExercises.length - 1) {
-        setCurrentExerciseIndex(currentExerciseIndex + 1);
-        setCurrentSetIndex(0);
-      } else {
-        // 3. All exercises completed -> trigger Workout Finish Review
-        setIsFinished(true);
-      }
+    const restSeconds =
+      currentPlannedExercise.restSeconds ??
+      currentExerciseDef?.defaultRestSeconds ??
+      (currentExerciseDef?.category === 'Endurance' || currentExerciseDef?.category === 'Flexibility'
+        ? 60
+        : state.preferences.defaultRestSeconds);
+    if (restSeconds > 0) {
+      setTimerNow(Date.now());
+      setRestTimer(startRestTimer(restSeconds));
     }
+
+    const next = getNextWorkoutPosition(
+      activeWorkout.plannedExercises,
+      currentExerciseIndex,
+      currentSetIndex
+    );
+    if (next) {
+      setCurrentExerciseIndex(next.exerciseIndex);
+      setCurrentSetIndex(next.setIndex);
+    } else setIsFinished(true);
+  };
+
+  const setLastRir = (rir: RIR) => {
+    if (!lastCompleted) return;
+    setExerciseExecutions((current) => current.map((exercise, exerciseIndex) =>
+      exerciseIndex !== lastCompleted.exerciseIndex ? exercise : {
+        ...exercise,
+        setExecutions: exercise.setExecutions.map((set, setIndex) =>
+          setIndex === lastCompleted.setIndex ? { ...set, rir } : set
+        ),
+      }
+    ));
+  };
+
+  const undoLastSet = () => {
+    if (!lastCompleted) return;
+    setExerciseExecutions((current) => current.map((exercise, exerciseIndex) =>
+      exerciseIndex !== lastCompleted.exerciseIndex ? exercise : {
+        ...exercise,
+        completedSets: Math.max(0, exercise.completedSets - 1),
+        setExecutions: exercise.setExecutions.map((set, setIndex) =>
+          setIndex === lastCompleted.setIndex ? { ...set, completed: false, rir: undefined } : set
+        ),
+      }
+    ));
+    setCurrentExerciseIndex(lastCompleted.exerciseIndex);
+    setCurrentSetIndex(lastCompleted.setIndex);
+    setRestTimer(null);
+    setLastCompleted(null);
   };
 
   // Toggle set completion directly by clicking set pill
@@ -237,6 +350,7 @@ export const WorkoutMode: React.FC<WorkoutModeProps> = ({
     };
 
     onFinishWorkout(finalExecution);
+    setRestTimer(null);
   };
 
   // Calculated stats for current set preview
@@ -365,6 +479,96 @@ export const WorkoutMode: React.FC<WorkoutModeProps> = ({
             </button>
           </div>
 
+          {restTimer && (
+            <div
+              className={`rounded-2xl border p-3 ${
+                timerRemaining > 0
+                  ? 'border-sky-500/30 bg-sky-500/10'
+                  : 'border-emerald-500/40 bg-emerald-500/10'
+              }`}
+              role="timer"
+              aria-live={timerRemaining === 0 ? 'assertive' : 'off'}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Clock className="h-5 w-5 text-sky-400" />
+                  <div>
+                    <div className="font-mono text-xl font-black text-zinc-100">
+                      {Math.floor(timerRemaining / 60)}:{String(timerRemaining % 60).padStart(2, '0')}
+                    </div>
+                    <div className="text-[9px] uppercase text-zinc-500">
+                      {timerRemaining ? 'Resting' : 'Ready for the next set'}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setRestTimer((timer) => timer && (
+                      timer.pausedRemaining === undefined
+                        ? pauseRestTimer(timer)
+                        : resumeRestTimer(timer)
+                    ))}
+                    className="touch-target rounded-xl bg-zinc-950/60 text-zinc-200"
+                    aria-label={restTimer.pausedRemaining === undefined ? 'Pause timer' : 'Resume timer'}
+                  >
+                    {restTimer.pausedRemaining === undefined ? <Pause className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRestTimer((timer) => timer && addRestSeconds(timer, 30))}
+                    className="touch-target rounded-xl bg-zinc-950/60 font-mono text-xs text-zinc-200"
+                    aria-label="Add 30 seconds"
+                  >
+                    +30
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRestTimer((timer) => timer && startRestTimer(timer.durationSeconds))}
+                    className="touch-target rounded-xl bg-zinc-950/60 text-zinc-200"
+                    aria-label="Restart timer"
+                  >
+                    <TimerReset className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRestTimer(null)}
+                    className="touch-target rounded-xl bg-zinc-950/60 text-zinc-400"
+                    aria-label="Skip rest timer"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+              {lastCompleted && (
+                <div className="mt-3 flex items-center gap-1 overflow-x-auto border-t border-zinc-700/50 pt-2">
+                  <span className="mr-1 shrink-0 font-mono text-[9px] uppercase text-zinc-500">Optional RIR</span>
+                  {([0, 1, 2, 3, 4, 5] as RIR[]).map((rir) => {
+                    const selected = exerciseExecutions[lastCompleted.exerciseIndex]
+                      ?.setExecutions[lastCompleted.setIndex]?.rir === rir;
+                    return (
+                      <button
+                        type="button"
+                        key={rir}
+                        onClick={() => setLastRir(rir)}
+                        className={`h-9 min-w-9 rounded-lg border font-mono text-xs font-bold ${
+                          selected
+                            ? 'border-emerald-500 bg-emerald-500 text-zinc-950'
+                            : 'border-zinc-700 bg-zinc-950 text-zinc-300'
+                        }`}
+                      >
+                        {rir}
+                      </button>
+                    );
+                  })}
+                  <button type="button" onClick={undoLastSet} className="ml-auto flex h-9 items-center gap-1 rounded-lg px-2 text-xs text-amber-300">
+                    <Undo2 className="h-3.5 w-3.5" /> Undo
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Current Exercise Focus Card */}
           <div className="space-y-3 rounded-2xl border border-zinc-800 bg-zinc-900 p-3 shadow-2xl sm:space-y-6 sm:p-8">
             <div>
@@ -420,6 +624,23 @@ export const WorkoutMode: React.FC<WorkoutModeProps> = ({
                 <span>PLANNED: {plannedSet?.plannedReps} reps @ {plannedSet?.plannedWeight} kg</span>
               </div>
 
+              {(previousComparableSet || pendingSuggestion) && (
+                <div className="grid grid-cols-2 gap-2 text-[10px] font-mono">
+                  <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-2 text-zinc-400">
+                    <span className="block uppercase text-zinc-600">Previous</span>
+                    {previousComparableSet?.completed
+                      ? `${previousComparableSet.reps} reps @ ${previousComparableSet.weight} kg`
+                      : 'No comparable set'}
+                  </div>
+                  <div className="rounded-lg border border-purple-500/20 bg-purple-500/10 p-2 text-purple-300">
+                    <span className="block uppercase text-purple-400/60">Next target</span>
+                    {pendingSuggestion
+                      ? `${pendingSuggestion.suggested.sets}×${pendingSuggestion.suggested.reps} @ ${pendingSuggestion.suggested.weight} kg`
+                      : 'No pending suggestion'}
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3 sm:gap-6">
                 {/* Reps Input */}
                 <div className="space-y-2">
@@ -435,8 +656,10 @@ export const WorkoutMode: React.FC<WorkoutModeProps> = ({
                     </button>
                     <input
                       type="number"
+                      inputMode="numeric"
+                      min="0"
                       value={loggedReps}
-                      onChange={(e) => setLoggedReps(Number(e.target.value))}
+                      onChange={(e) => setLoggedReps(Math.max(0, Number(e.target.value)))}
                       className="w-16 rounded-xl border border-zinc-800 bg-zinc-900 py-1.5 text-center font-mono text-2xl font-black text-emerald-400 focus:border-emerald-500 focus:outline-none sm:w-24 sm:py-2 sm:text-4xl"
                     />
                     <button
@@ -475,6 +698,8 @@ export const WorkoutMode: React.FC<WorkoutModeProps> = ({
                     </button>
                     <input
                       type="number"
+                      inputMode="decimal"
+                      min="0"
                       step="0.5"
                       value={loggedWeight}
                       onChange={(e) => setLoggedWeight(Number(e.target.value))}
@@ -513,7 +738,8 @@ export const WorkoutMode: React.FC<WorkoutModeProps> = ({
               {/* MASSIVE COMPLETE SET BUTTON */}
               <button
                 onClick={handleCompleteSet}
-                className="sticky bottom-[calc(var(--mobile-dock-height)+0.5rem)] z-20 flex w-full items-center justify-center space-x-2 rounded-2xl bg-emerald-500 py-3 font-mono text-sm font-black tracking-wider text-zinc-950 shadow-xl shadow-emerald-500/20 transition-all hover:bg-emerald-400 active:scale-[0.98] sm:static sm:space-x-3 sm:py-5 sm:text-lg"
+                disabled={currentSetExec?.completed}
+                className="sticky bottom-[calc(var(--mobile-dock-height)+0.5rem)] z-20 flex w-full items-center justify-center space-x-2 rounded-2xl bg-emerald-500 py-3 font-mono text-sm font-black tracking-wider text-zinc-950 shadow-xl shadow-emerald-500/20 transition-all hover:bg-emerald-400 active:scale-[0.98] disabled:bg-zinc-700 disabled:text-zinc-400 sm:static sm:space-x-3 sm:py-5 sm:text-lg"
               >
                 <Check className="w-6 h-6 stroke-[3]" />
                 <span>COMPLETE SET #{currentSetIndex + 1}</span>

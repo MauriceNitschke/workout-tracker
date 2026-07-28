@@ -13,6 +13,7 @@ export interface ExerciseDataPoint {
   totalVolume: number;
   totalReps: number;
   completedSetsCount: number;
+  averageRir?: number;
   bestSet: {
     weight: number;
     reps: number;
@@ -42,6 +43,7 @@ export interface ExerciseAnalyticsReport {
     totalRepsAllTime: number;
     totalSetsAllTime: number;
     weeklyFrequencyAvg: number; // Avg times per active week
+    averageRir?: number;
   };
   plannedVsActualHistory: {
     date: string;
@@ -57,7 +59,7 @@ export interface ExerciseAnalyticsReport {
 /**
  * Filter cutoff date string generator
  */
-function getCutoffDateStr(filter: TimeFilter, referenceDateStr: string = '2026-07-26'): string {
+function getCutoffDateStr(filter: TimeFilter, referenceDateStr: string = new Date().toISOString().slice(0, 10)): string {
   if (filter === 'ALL') return '1900-01-01';
   const ref = new Date(referenceDateStr);
   const cutoff = new Date(ref);
@@ -111,6 +113,8 @@ export function getExerciseAnalyticsReport(
   let highestEstimated1RM = 0;
   let bestWorkingWeight = 0;
   let bestSetObj = { weight: 0, reps: 0, e1rm: 0 };
+  let totalRir = 0;
+  let rirCount = 0;
 
   const plannedVsActualHistory: ExerciseAnalyticsReport['plannedVsActualHistory'] = [];
 
@@ -143,6 +147,8 @@ export function getExerciseAnalyticsReport(
       let dayTotalVolume = 0;
       let dayTotalReps = 0;
       let dayCompletedSets = 0;
+      let dayRir = 0;
+      let dayRirCount = 0;
       let dayBestSet = { weight: 0, reps: 0, e1rm: 0 };
 
       ee.setExecutions.forEach((se) => {
@@ -152,6 +158,12 @@ export function getExerciseAnalyticsReport(
         totalSetsAllTime++;
         dayTotalReps += se.reps;
         totalRepsAllTime += se.reps;
+        if (se.rir !== undefined) {
+          totalRir += se.rir;
+          rirCount += 1;
+          dayRir += se.rir;
+          dayRirCount += 1;
+        }
 
         const setVolume = se.weight * se.reps;
         dayTotalVolume += setVolume;
@@ -245,6 +257,7 @@ export function getExerciseAnalyticsReport(
           totalVolume: dayTotalVolume,
           totalReps: dayTotalReps,
           completedSetsCount: dayCompletedSets,
+          averageRir: dayRirCount ? Math.round(dayRir / dayRirCount * 10) / 10 : undefined,
           bestSet: dayBestSet,
           notes: ee.notes || exec.notes,
         });
@@ -296,6 +309,7 @@ export function getExerciseAnalyticsReport(
       totalRepsAllTime,
       totalSetsAllTime,
       weeklyFrequencyAvg,
+      averageRir: rirCount ? Math.round(totalRir / rirCount * 10) / 10 : undefined,
     },
     plannedVsActualHistory: plannedVsActualHistory.reverse(), // most recent first
   };

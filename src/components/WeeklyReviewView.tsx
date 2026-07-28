@@ -43,12 +43,14 @@ import {
   CartesianGrid,
 } from 'recharts';
 import { ExerciseDetailModal } from './ExerciseDetailModal';
+import { applyRecommendation } from '../lib/progression';
 
 interface WeeklyReviewViewProps {
   state: AppState;
+  onUpdateState: (state: AppState) => void;
 }
 
-export const WeeklyReviewView: React.FC<WeeklyReviewViewProps> = ({ state }) => {
+export const WeeklyReviewView: React.FC<WeeklyReviewViewProps> = ({ state, onUpdateState }) => {
   const [activeSection, setActiveSection] = useState<'review' | 'muscle-volume' | 'strength-progress'>('review');
 
   // Selected week for review
@@ -66,6 +68,13 @@ export const WeeklyReviewView: React.FC<WeeklyReviewViewProps> = ({ state }) => 
 
   // Modal for exercise detail
   const [activeDetailExerciseId, setActiveDetailExerciseId] = useState<string | null>(null);
+  const [recommendationToApply, setRecommendationToApply] = useState<string | null>(null);
+  const [recommendationDraft, setRecommendationDraft] = useState<{
+    id: string;
+    sets: number;
+    reps: number;
+    weight: number;
+  } | null>(null);
 
   const selectedWeek = state.weeks.find((w) => w.id === selectedWeekId) || state.weeks[0];
 
@@ -94,6 +103,32 @@ export const WeeklyReviewView: React.FC<WeeklyReviewViewProps> = ({ state }) => 
 
   // Muscle volume analytics calculation
   const muscleAnalytics = calculateMuscleVolumeAnalytics(state);
+  const pendingRecommendations = state.progressionRecommendations.filter(
+    (item) => item.status === 'pending'
+  );
+  const recentWeeks = [...state.weeks]
+    .sort((a, b) => a.year - b.year || a.isoWeek - b.isoWeek)
+    .slice(-4);
+  const recentWeekIds = new Set(recentWeeks.map((week) => week.id));
+  const recentWorkouts = state.scheduledWorkouts.filter((workout) => recentWeekIds.has(workout.weekId));
+  const recentExecutions = state.workoutExecutions.filter((execution) =>
+    recentWorkouts.some((workout) => workout.id === execution.scheduledWorkoutId)
+  );
+  const recentVolume = recentExecutions.reduce(
+    (sum, execution) => sum + calculateExecutionVolume(execution), 0
+  );
+  const plannedSets = recentWorkouts.reduce(
+    (sum, workout) => sum + workout.plannedExercises.reduce(
+      (exerciseSum, exercise) => exerciseSum + exercise.plannedSets.length, 0
+    ), 0
+  );
+  const completedSets = recentExecutions.reduce(
+    (sum, execution) => sum + execution.exerciseExecutions.reduce(
+      (exerciseSum, exercise) =>
+        exerciseSum + exercise.setExecutions.filter((set) => set.completed).length, 0
+    ), 0
+  );
+  const recentPrs = calculatePersonalRecords(state).slice(0, 5);
 
   // Strength progress report calculation for selected exercise
   const strengthReport = getExerciseAnalyticsReport(
@@ -166,6 +201,108 @@ export const WeeklyReviewView: React.FC<WeeklyReviewViewProps> = ({ state }) => 
           </button>
         </div>
       </div>
+
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-lg font-bold text-zinc-100">Your training at a glance</h2>
+          <p className="text-xs text-zinc-500">Facts from the latest four training weeks.</p>
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+          {[
+            {
+              label: 'Sessions followed',
+              value: `${recentWorkouts.filter((workout) => workout.status === 'Completed').length}/${recentWorkouts.length}`,
+              detail: 'planned sessions',
+            },
+            {
+              label: 'Sets completed',
+              value: `${completedSets}/${plannedSets}`,
+              detail: plannedSets ? `${Math.round(completedSets / plannedSets * 100)}% adherence` : 'No plan yet',
+            },
+            {
+              label: '4-week volume',
+              value: `${Math.round(recentVolume).toLocaleString()} kg`,
+              detail: 'completed tonnage',
+            },
+            {
+              label: 'Recent PRs',
+              value: String(recentPrs.length),
+              detail: recentPrs[0]?.formattedValue ?? 'No recent PR',
+            },
+            {
+              label: 'Next decisions',
+              value: String(pendingRecommendations.length),
+              detail: 'progression suggestions',
+            },
+          ].map((card) => (
+            <div key={card.label} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3 sm:p-4">
+              <span className="font-mono text-[9px] uppercase text-zinc-500">{card.label}</span>
+              <div className="mt-1 text-xl font-black text-zinc-100">{card.value}</div>
+              <div className="mt-1 truncate text-[10px] text-zinc-500">{card.detail}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {pendingRecommendations.length > 0 && (
+        <section className="rounded-2xl border border-purple-500/20 bg-purple-500/5 p-4 sm:p-5">
+          <div className="mb-3">
+            <h2 className="font-bold text-zinc-100">What should change next?</h2>
+            <p className="text-xs text-zinc-500">Suggestions are explainable and never applied without confirmation.</p>
+          </div>
+          <div className="space-y-2">
+            {pendingRecommendations.map((recommendation) => {
+              const exercise = state.exercises.find((item) => item.id === recommendation.exerciseId);
+              return (
+                <div key={recommendation.id} className="rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-bold text-zinc-100">{exercise?.name ?? 'Exercise'}</div>
+                      <div className="mt-0.5 font-mono text-xs text-purple-300">
+                        {recommendation.suggested.sets}×{recommendation.suggested.reps} @ {recommendation.suggested.weight} kg
+                      </div>
+                      <p className="mt-1 text-[11px] text-zinc-500">{recommendation.evidence}</p>
+                    </div>
+                    <div className="flex shrink-0 flex-wrap justify-end gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setRecommendationToApply(recommendation.id)}
+                        className="rounded-lg bg-emerald-500 px-3 py-2 text-xs font-bold text-zinc-950"
+                      >
+                        Apply
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setRecommendationDraft({
+                          id: recommendation.id,
+                          ...recommendation.suggested,
+                        })}
+                        className="rounded-lg border border-purple-500/30 px-3 py-2 text-xs text-purple-300"
+                      >
+                        Modify
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onUpdateState({
+                          ...state,
+                          progressionRecommendations: state.progressionRecommendations.map((item) =>
+                            item.id === recommendation.id
+                              ? { ...item, status: 'dismissed', decidedAt: new Date().toISOString() }
+                              : item
+                          ),
+                        })}
+                        className="rounded-lg border border-zinc-700 px-3 py-2 text-xs text-zinc-400"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* SECTION 1: WEEKLY PLANNED VS ACTUAL REVIEW */}
       {activeSection === 'review' && (
@@ -315,6 +452,7 @@ export const WeeklyReviewView: React.FC<WeeklyReviewViewProps> = ({ state }) => 
                                     }`}
                                   >
                                     Set {se.setNumber}: {se.reps} reps @ {se.weight}kg
+                                    {se.rir !== undefined ? ` · ${se.rir} RIR` : ''}
                                   </span>
                                 ))}
                               </div>
@@ -369,6 +507,7 @@ export const WeeklyReviewView: React.FC<WeeklyReviewViewProps> = ({ state }) => 
                     <th className="pb-3 font-bold">PREVIOUS WEEK</th>
                     <th className="pb-3 font-bold">LAST 4W AVG</th>
                     <th className="pb-3 font-bold">MONTHLY TOTAL</th>
+                    <th className="pb-3 font-bold">TARGET / WEEK</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-800/60">
@@ -391,6 +530,51 @@ export const WeeklyReviewView: React.FC<WeeklyReviewViewProps> = ({ state }) => 
                         <td className="py-3 text-zinc-300">{s.previousWeekSets} sets</td>
                         <td className="py-3 text-zinc-300">{s.last4WeeksAvg} sets/wk</td>
                         <td className="py-3 text-purple-400 font-bold">{s.monthlySets} sets</td>
+                        <td className="py-3">
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="number"
+                              min="0"
+                              aria-label={`${s.muscleGroup} minimum weekly sets`}
+                              value={state.preferences.muscleWeeklyTargets[s.muscleGroup]?.min ?? 8}
+                              onChange={(event) => {
+                                const current = state.preferences.muscleWeeklyTargets[s.muscleGroup] ?? { min: 8, max: 16 };
+                                onUpdateState({
+                                  ...state,
+                                  preferences: {
+                                    ...state.preferences,
+                                    muscleWeeklyTargets: {
+                                      ...state.preferences.muscleWeeklyTargets,
+                                      [s.muscleGroup]: { ...current, min: Math.max(0, Number(event.target.value)) },
+                                    },
+                                  },
+                                });
+                              }}
+                              className="w-12 rounded border border-zinc-800 bg-zinc-950 p-1 text-center text-zinc-200"
+                            />
+                            <span className="text-zinc-600">–</span>
+                            <input
+                              type="number"
+                              min="0"
+                              aria-label={`${s.muscleGroup} maximum weekly sets`}
+                              value={state.preferences.muscleWeeklyTargets[s.muscleGroup]?.max ?? 16}
+                              onChange={(event) => {
+                                const current = state.preferences.muscleWeeklyTargets[s.muscleGroup] ?? { min: 8, max: 16 };
+                                onUpdateState({
+                                  ...state,
+                                  preferences: {
+                                    ...state.preferences,
+                                    muscleWeeklyTargets: {
+                                      ...state.preferences.muscleWeeklyTargets,
+                                      [s.muscleGroup]: { ...current, max: Math.max(current.min, Number(event.target.value)) },
+                                    },
+                                  },
+                                });
+                              }}
+                              className="w-12 rounded border border-zinc-800 bg-zinc-950 p-1 text-center text-zinc-200"
+                            />
+                          </div>
+                        </td>
                       </tr>
                     );
                   })}
@@ -536,7 +720,7 @@ export const WeeklyReviewView: React.FC<WeeklyReviewViewProps> = ({ state }) => 
           {strengthReport && (
             <div className="space-y-6">
               {/* Exercise Key Metrics */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
                 <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 hover:border-zinc-700 transition">
                   <span className="text-xs font-mono text-zinc-500 uppercase tracking-wider block">
                     HIGHEST RECORDED WEIGHT
@@ -582,6 +766,18 @@ export const WeeklyReviewView: React.FC<WeeklyReviewViewProps> = ({ state }) => 
                     {strengthReport.stats.bestSetFormatted}
                   </div>
                   <span className="text-xs text-zinc-500 font-mono mt-1 block">Top set performance</span>
+                </div>
+
+                <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 hover:border-zinc-700 transition">
+                  <span className="text-xs font-mono text-zinc-500 uppercase tracking-wider block">
+                    AVERAGE RIR
+                  </span>
+                  <div className="mt-2 text-3xl font-mono font-bold text-amber-300">
+                    {strengthReport.stats.averageRir ?? '—'}
+                  </div>
+                  <span className="text-xs text-zinc-500 font-mono mt-1 block">
+                    {strengthReport.stats.averageRir === undefined ? 'Not enough RIR data' : 'Logged effort'}
+                  </span>
                 </div>
               </div>
 
@@ -655,7 +851,76 @@ export const WeeklyReviewView: React.FC<WeeklyReviewViewProps> = ({ state }) => 
           onClose={() => setActiveDetailExerciseId(null)}
         />
       )}
+
+      {recommendationToApply && (
+        <div className="mobile-sheet-layer items-end justify-center sm:items-center" role="alertdialog" aria-modal="true">
+          <div className="w-full max-w-md rounded-t-2xl border border-zinc-700 bg-zinc-900 p-5 sm:rounded-2xl">
+            <h2 className="text-lg font-bold text-zinc-100">Apply progression target?</h2>
+            <p className="mt-2 text-sm text-zinc-400">
+              This updates the source template and matching future workouts that are still Planned.
+              Started, completed, and locked history stays unchanged.
+            </p>
+            <div className="mt-5 grid grid-cols-2 gap-2">
+              <button onClick={() => setRecommendationToApply(null)} className="mobile-action secondary-action">Cancel</button>
+              <button
+                onClick={() => {
+                  onUpdateState(applyRecommendation(state, recommendationToApply));
+                  setRecommendationToApply(null);
+                }}
+                className="mobile-action bg-emerald-500 text-zinc-950"
+              >
+                Apply target
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {recommendationDraft && (
+        <div className="mobile-sheet-layer items-end justify-center sm:items-center" role="dialog" aria-modal="true">
+          <div className="w-full max-w-md rounded-t-2xl border border-zinc-700 bg-zinc-900 p-5 sm:rounded-2xl">
+            <h2 className="text-lg font-bold text-zinc-100">Modify next target</h2>
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              {([
+                ['sets', 'Sets', 1],
+                ['reps', 'Reps', 1],
+                ['weight', 'Weight kg', 0.25],
+              ] as const).map(([field, label, step]) => (
+                <label key={field} className="text-[10px] uppercase text-zinc-500">
+                  {label}
+                  <input
+                    type="number"
+                    min={field === 'weight' ? 0 : 1}
+                    step={step}
+                    value={recommendationDraft[field]}
+                    onChange={(event) => setRecommendationDraft({
+                      ...recommendationDraft,
+                      [field]: Math.max(field === 'weight' ? 0 : 1, Number(event.target.value)),
+                    })}
+                    className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 p-3 text-center text-zinc-100"
+                  />
+                </label>
+              ))}
+            </div>
+            <div className="mt-5 grid grid-cols-2 gap-2">
+              <button onClick={() => setRecommendationDraft(null)} className="mobile-action secondary-action">Cancel</button>
+              <button
+                onClick={() => {
+                  onUpdateState(applyRecommendation(state, recommendationDraft.id, {
+                    sets: recommendationDraft.sets,
+                    reps: recommendationDraft.reps,
+                    weight: recommendationDraft.weight,
+                  }));
+                  setRecommendationDraft(null);
+                }}
+                className="mobile-action bg-purple-400 text-zinc-950"
+              >
+                Apply modified
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
-

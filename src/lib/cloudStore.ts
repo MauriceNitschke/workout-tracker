@@ -14,8 +14,8 @@ import {
 } from 'firebase/firestore';
 import { AppState } from '../types';
 import { db } from './firebase';
+import { migrateAppState, SCHEMA_VERSION } from './storage';
 
-const SCHEMA_VERSION = 2;
 const COLLECTIONS = [
   'programs',
   'exercises',
@@ -23,6 +23,8 @@ const COLLECTIONS = [
   'weeks',
   'scheduledWorkouts',
   'workoutExecutions',
+  'weeklySchedulePatterns',
+  'progressionRecommendations',
   'enduranceActivities',
   'recoveryActivities',
 ] as const;
@@ -34,6 +36,7 @@ interface CloudMeta {
   activeProgramId: string;
   activeWorkoutId: string | null;
   revision?: number;
+  preferences?: AppState['preferences'];
 }
 
 function requireDb() {
@@ -81,7 +84,7 @@ export async function loadCloudState(uid: string): Promise<AppState | null> {
   );
 
   const records = Object.fromEntries(entries) as Record<CollectionKey, DocumentData[]>;
-  return {
+  return migrateAppState({
     programs: records.programs as AppState['programs'],
     activeProgramId: meta.activeProgramId,
     exercises: records.exercises as AppState['exercises'],
@@ -89,10 +92,15 @@ export async function loadCloudState(uid: string): Promise<AppState | null> {
     weeks: records.weeks as AppState['weeks'],
     scheduledWorkouts: records.scheduledWorkouts as AppState['scheduledWorkouts'],
     workoutExecutions: records.workoutExecutions as AppState['workoutExecutions'],
+    weeklySchedulePatterns:
+      records.weeklySchedulePatterns as AppState['weeklySchedulePatterns'],
+    progressionRecommendations:
+      records.progressionRecommendations as AppState['progressionRecommendations'],
+    preferences: meta.preferences,
     enduranceActivities: records.enduranceActivities as AppState['enduranceActivities'],
     recoveryActivities: records.recoveryActivities as AppState['recoveryActivities'],
     activeWorkoutId: meta.activeWorkoutId ?? null,
-  };
+  } as AppState);
 }
 
 async function synchronizeCollection(
@@ -154,6 +162,7 @@ export async function saveCloudState(
     schemaVersion: SCHEMA_VERSION,
     activeProgramId: state.activeProgramId,
     activeWorkoutId: state.activeWorkoutId,
+    preferences: withoutUndefined(state.preferences),
     revision: increment(1),
     updatedAt: serverTimestamp(),
     initializedAt: previous.data()?.initializedAt ?? serverTimestamp(),

@@ -10,6 +10,9 @@ export type WorkoutStatus = 'Planned' | 'Started' | 'Completed' | 'Partial' | 'S
 export type PRMetric = 'highest_weight' | 'estimated_1rm' | 'max_reps' | 'longest_duration';
 
 export type ProgressionStrategy = 'Linear' | 'Double Progression' | 'Wave Loading' | 'Step Loading';
+export type ExerciseBlockType = 'straight' | 'superset' | 'circuit';
+export type RIR = 0 | 1 | 2 | 3 | 4 | 5;
+export type RecommendationStatus = 'pending' | 'accepted' | 'modified' | 'dismissed';
 
 export type ExerciseCategory = 'Strength' | 'Bodyweight' | 'Endurance' | 'Flexibility';
 
@@ -63,6 +66,13 @@ export interface Exercise {
   progressionStrategy: ProgressionStrategy;
   prMetric: PRMetric;
   category: ExerciseCategory;
+  defaultRestSeconds?: number;
+  weightIncrementKg?: number;
+  repRangeMin?: number;
+  repRangeMax?: number;
+  targetRir?: RIR;
+  stepLoadingExposures?: number;
+  deloadPercent?: number;
 }
 
 export interface PlannedSet {
@@ -78,6 +88,13 @@ export interface PlannedExercise {
   plannedSets: PlannedSet[];
   plannedNotes?: string;
   order: number;
+  restSeconds?: number;
+  weightIncrementKg?: number;
+  repRangeMin?: number;
+  repRangeMax?: number;
+  targetRir?: RIR;
+  blockId?: string;
+  blockType?: ExerciseBlockType;
 }
 
 export interface WorkoutTemplate {
@@ -97,6 +114,11 @@ export interface ScheduledWorkout {
   notes?: string;
   status: WorkoutStatus;
   plannedExercises: PlannedExercise[];
+  sourceSchedulePatternId?: string;
+  sourceScheduleEntryId?: string;
+  startTime?: string;
+  durationMinutes?: number;
+  timeZone?: string;
 }
 
 export interface SetExecution {
@@ -107,6 +129,7 @@ export interface SetExecution {
   duration?: number;
   completed: boolean;
   notes?: string;
+  rir?: RIR;
 }
 
 export interface ExerciseExecution {
@@ -175,6 +198,50 @@ export interface ProgressiveOverloadDraft {
   }[];
 }
 
+export interface WeeklySchedulePatternEntry {
+  id: string;
+  weekday: 1 | 2 | 3 | 4 | 5 | 6 | 7;
+  workoutTemplateId: string;
+  title?: string;
+  order: number;
+}
+
+export interface WeeklySchedulePattern {
+  id: string;
+  name: string;
+  programId?: string;
+  entries: WeeklySchedulePatternEntry[];
+}
+
+export interface ProgressionTarget {
+  sets: number;
+  reps: number;
+  weight: number;
+}
+
+export interface ProgressionRecommendation {
+  id: string;
+  exerciseId: string;
+  sourceWorkoutExecutionId: string;
+  sourceScheduledWorkoutId: string;
+  workoutTemplateId?: string;
+  strategy: ProgressionStrategy;
+  current: ProgressionTarget;
+  suggested: ProgressionTarget;
+  evidence: string;
+  status: RecommendationStatus;
+  createdAt: string;
+  decidedAt?: string;
+}
+
+export interface AppPreferences {
+  timerSound: boolean;
+  timerVibration: boolean;
+  defaultRestSeconds: number;
+  preferredWeightIncrementKg: number;
+  muscleWeeklyTargets: Record<string, { min: number; max: number }>;
+}
+
 export interface PersonalRecord {
   exerciseId: string;
   metric: PRMetric;
@@ -193,6 +260,9 @@ export interface AppState {
   weeks: TrainingWeek[];
   scheduledWorkouts: ScheduledWorkout[];
   workoutExecutions: WorkoutExecution[];
+  weeklySchedulePatterns: WeeklySchedulePattern[];
+  progressionRecommendations: ProgressionRecommendation[];
+  preferences: AppPreferences;
   enduranceActivities: EnduranceActivity[];
   recoveryActivities: RecoveryActivity[];
   activeWorkoutId: string | null; // Currently open in workout mode

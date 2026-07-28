@@ -629,6 +629,15 @@ export function getInitialSeedState(): AppState {
     weeks,
     scheduledWorkouts,
     workoutExecutions,
+    weeklySchedulePatterns: [],
+    progressionRecommendations: [],
+    preferences: {
+      timerSound: false,
+      timerVibration: true,
+      defaultRestSeconds: 120,
+      preferredWeightIncrementKg: 2.5,
+      muscleWeeklyTargets: {},
+    },
     enduranceActivities,
     recoveryActivities,
     activeWorkoutId: null,
@@ -646,4 +655,3 @@ export function getCleanSlateState(): AppState {
     activeWorkoutId: null,
   };
 }
-

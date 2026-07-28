@@ -4,7 +4,7 @@ import { getCleanSlateState, getInitialSeedState } from '../data/seedData';
 const LEGACY_STORAGE_KEY = 'training_os_app_state_v1';
 const GUEST_STORAGE_KEY = 'training_os_guest_state_v2';
 const GUEST_ARCHIVE_KEY = 'training_os_guest_archive_v2';
-const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 interface PersistedState {
   schemaVersion: number;
@@ -33,6 +33,26 @@ export function isValidAppState(value: unknown): value is AppState {
   );
 }
 
+export function migrateAppState(value: AppState | Record<string, unknown>): AppState {
+  const state = value as AppState;
+  return {
+    ...state,
+    weeklySchedulePatterns: Array.isArray(state.weeklySchedulePatterns)
+      ? state.weeklySchedulePatterns
+      : [],
+    progressionRecommendations: Array.isArray(state.progressionRecommendations)
+      ? state.progressionRecommendations
+      : [],
+    preferences: {
+      timerSound: state.preferences?.timerSound ?? false,
+      timerVibration: state.preferences?.timerVibration ?? true,
+      defaultRestSeconds: state.preferences?.defaultRestSeconds ?? 120,
+      preferredWeightIncrementKg: state.preferences?.preferredWeightIncrementKg ?? 2.5,
+      muscleWeeklyTargets: state.preferences?.muscleWeeklyTargets ?? {},
+    },
+  };
+}
+
 function persist(key: string, state: AppState): void {
   const envelope: PersistedState = {
     schemaVersion: SCHEMA_VERSION,
@@ -48,7 +68,7 @@ function parsePersisted(raw: string | null): AppState | null {
     const parsed = JSON.parse(raw) as PersistedState | AppState;
     const candidate =
       typeof parsed === 'object' && parsed !== null && 'data' in parsed ? parsed.data : parsed;
-    return isValidAppState(candidate) ? candidate : null;
+    return isValidAppState(candidate) ? migrateAppState(candidate) : null;
   } catch {
     return null;
   }
@@ -125,5 +145,5 @@ export function parseAppStateBackup(raw: string): AppState {
   if (!isValidAppState(candidate)) {
     throw new Error('This file is not a valid Training OS backup.');
   }
-  return candidate;
+  return migrateAppState(candidate);
 }

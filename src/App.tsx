@@ -14,6 +14,7 @@ import {
   routeFromLegacyId,
 } from './lib/routes';
 import { useCloudAccount } from './hooks/useCloudAccount';
+import { createWorkoutRecommendations } from './lib/progression';
 import { Navigation } from './components/Navigation';
 import { Dashboard } from './components/Dashboard';
 import { Toast, ToastMessage } from './components/Toast';
@@ -110,10 +111,16 @@ export default function App() {
   };
 
   const handleFinishWorkout = (execution: WorkoutExecution) => {
+    const recommendations = createWorkoutRecommendations(execution, state);
     setState((current) => {
       const scheduledWorkouts = current.scheduledWorkouts.map((workout) =>
         workout.id === execution.scheduledWorkoutId
-          ? { ...workout, status: 'Completed' as const }
+          ? {
+              ...workout,
+              status: execution.completionPercentage >= 100
+                ? 'Completed' as const
+                : 'Partial' as const,
+            }
           : workout
       );
       const existingIndex = current.workoutExecutions.findIndex(
@@ -140,12 +147,22 @@ export default function App() {
         ...current,
         scheduledWorkouts,
         workoutExecutions,
+        progressionRecommendations: [
+          ...current.progressionRecommendations.filter(
+            (item) => item.sourceWorkoutExecutionId !== execution.id
+          ),
+          ...recommendations,
+        ],
         weeks,
         activeWorkoutId: null,
       };
     });
-    navigate('today');
-    showToast('Workout saved.');
+    navigate(recommendations.length ? 'progress' : 'today');
+    showToast(
+      recommendations.length
+        ? `Workout saved. ${recommendations.length} progression suggestion${recommendations.length === 1 ? '' : 's'} ready.`
+        : 'Workout saved.'
+    );
   };
 
   const handleImportData = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -250,7 +267,9 @@ export default function App() {
               onCancelWorkout={() => navigate('today')}
             />
           )}
-          {currentRoute === 'progress' && <WeeklyReviewView state={state} />}
+          {currentRoute === 'progress' && (
+            <WeeklyReviewView state={state} onUpdateState={setState} />
+          )}
           {currentRoute === 'streaks' && (
             <LifeInWeeksView state={state} onUpdateState={setState} />
           )}

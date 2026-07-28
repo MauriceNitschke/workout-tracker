@@ -30,10 +30,15 @@ import {
   TrainingWeek,
   WeekStatus,
   WorkoutTemplate,
+  WeeklySchedulePattern,
 } from '../types';
 import { notify } from '../lib/notifications';
 import { generateProgressiveOverloadDraft } from '../lib/prCalculator';
 import { getCurrentISOWeekAndYear } from '../lib/weekUtils';
+import {
+  applySchedulePreview,
+  buildSchedulePreview,
+} from '../lib/scheduling';
 
 interface WeeklyPlannerProps {
   state: AppState;
@@ -91,6 +96,15 @@ export const WeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
 
   const [showOverloadModal, setShowOverloadModal] = useState(false);
   const [showUnlockConfirm, setShowUnlockConfirm] = useState(false);
+  const [replacementTargetId, setReplacementTargetId] = useState<string | null>(null);
+  const [replacementExerciseId, setReplacementExerciseId] = useState(state.exercises[0]?.id || '');
+  const [replacementScope, setReplacementScope] = useState<'workout' | 'template-future'>('workout');
+  const [showPatterns, setShowPatterns] = useState(false);
+  const [selectedPatternId, setSelectedPatternId] = useState(
+    state.weeklySchedulePatterns[0]?.id || ''
+  );
+  const [generationWeeks, setGenerationWeeks] = useState(4);
+  const [schedulePreview, setSchedulePreview] = useState<ReturnType<typeof buildSchedulePreview> | null>(null);
 
   // Progressive Overload Draft State
   const [overloadExerciseId, setOverloadExerciseId] = useState<string>(
@@ -108,6 +122,79 @@ export const WeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
     : [];
 
   const isLocked = selectedWeek?.status === 'Locked';
+  const selectedPattern = state.weeklySchedulePatterns.find(
+    (pattern) => pattern.id === selectedPatternId
+  );
+
+  const updatePattern = (pattern: WeeklySchedulePattern) => {
+    onUpdateState({
+      ...state,
+      weeklySchedulePatterns: state.weeklySchedulePatterns.map((item) =>
+        item.id === pattern.id ? pattern : item
+      ),
+    });
+  };
+
+  const createPattern = () => {
+    const pattern: WeeklySchedulePattern = {
+      id: `pattern-${Date.now()}`,
+      name: `Training week ${state.weeklySchedulePatterns.length + 1}`,
+      programId: state.activeProgramId,
+      entries: state.workoutTemplates[0]
+        ? [{
+            id: `pattern-entry-${Date.now()}`,
+            weekday: 1,
+            workoutTemplateId: state.workoutTemplates[0].id,
+            order: 1,
+          }]
+        : [],
+    };
+    onUpdateState({
+      ...state,
+      weeklySchedulePatterns: [...state.weeklySchedulePatterns, pattern],
+    });
+    setSelectedPatternId(pattern.id);
+  };
+
+  const copyPreviousWeek = () => {
+    if (!selectedWeek || selectedWeekIndex <= 0) return;
+    const previous = sortedWeeks[selectedWeekIndex - 1];
+    const previousWorkouts = state.scheduledWorkouts.filter((workout) => workout.weekId === previous.id);
+    const existingDates = new Set(state.scheduledWorkouts.filter(
+      (workout) => workout.weekId === selectedWeek.id
+    ).map((workout) => workout.date));
+    const copies = previousWorkouts.flatMap((workout, index) => {
+      const weekdayOffset = workout.date
+        ? Math.max(0, Math.round(
+            (new Date(`${workout.date}T12:00:00Z`).getTime() -
+              new Date(`${previous.startDate}T12:00:00Z`).getTime()) / 86400000
+          ))
+        : index;
+      const date = new Date(`${selectedWeek.startDate}T12:00:00Z`);
+      date.setUTCDate(date.getUTCDate() + weekdayOffset);
+      const dateString = date.toISOString().slice(0, 10);
+      if (existingDates.has(dateString)) return [];
+      return [{
+        ...workout,
+        id: `sw-${Date.now()}-copy-${index}`,
+        weekId: selectedWeek.id,
+        date: dateString,
+        status: 'Planned' as const,
+        workoutNumber:
+          state.scheduledWorkouts.filter((item) => item.weekId === selectedWeek.id).length +
+          index + 1,
+        sourceSchedulePatternId: undefined,
+        sourceScheduleEntryId: undefined,
+        plannedExercises: workout.plannedExercises.map((entry, entryIndex) => ({
+          ...entry,
+          id: `pe-${Date.now()}-copy-${index}-${entryIndex}`,
+          plannedSets: entry.plannedSets.map((set) => ({ ...set })),
+        })),
+      }];
+    });
+    onUpdateState({ ...state, scheduledWorkouts: [...state.scheduledWorkouts, ...copies] });
+    notify(`${copies.length} workouts copied into week ${selectedWeek.isoWeek}.`);
+  };
 
   // Week Status Changer
   const handleSetWeekStatus = (newStatus: WeekStatus) => {
@@ -239,6 +326,44 @@ export const WeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
       ...editingWorkout,
       plannedExercises: updated,
     });
+  };
+
+  const applyExerciseReplacement = () => {
+    if (!editingWorkout || !replacementTargetId || !replacementExerciseId) return;
+    const original = editingWorkout.plannedExercises.find((entry) => entry.id === replacementTargetId);
+    if (!original) return;
+    const replace = <T extends { exerciseId: string }>(entry: T): T =>
+      entry.exerciseId === original.exerciseId
+        ? { ...entry, exerciseId: replacementExerciseId }
+        : entry;
+    const nextWorkout = {
+      ...editingWorkout,
+      plannedExercises: editingWorkout.plannedExercises.map((entry) =>
+        entry.id === replacementTargetId ? replace(entry) : entry
+      ),
+    };
+    setEditingWorkout(nextWorkout);
+    if (replacementScope === 'template-future' && editingWorkout.workoutTemplateId) {
+      onUpdateState({
+        ...state,
+        workoutTemplates: state.workoutTemplates.map((template) =>
+          template.id === editingWorkout.workoutTemplateId
+            ? { ...template, plannedExercises: template.plannedExercises.map(replace) }
+            : template
+        ),
+        scheduledWorkouts: state.scheduledWorkouts.map((workout) =>
+          workout.status === 'Planned' && workout.workoutTemplateId === editingWorkout.workoutTemplateId
+            ? {
+                ...workout,
+                plannedExercises: workout.id === editingWorkout.id
+                  ? nextWorkout.plannedExercises
+                  : workout.plannedExercises.map(replace),
+              }
+            : workout
+        ),
+      });
+    }
+    setReplacementTargetId(null);
   };
 
   // Reorder Exercise in editing workout
@@ -515,6 +640,197 @@ export const WeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
           </div>
         )}
       </div>
+
+      <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 sm:p-5">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="font-mono text-sm font-bold text-zinc-100">Weekly patterns</h2>
+            <p className="mt-1 text-xs text-zinc-500">Generate several weeks without overwriting existing sessions.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowPatterns((value) => !value)}
+            className="mobile-action secondary-action"
+          >
+            <Layers className="h-4 w-4 text-sky-400" />
+            {showPatterns ? 'Close' : 'Open'}
+          </button>
+        </div>
+
+        {showPatterns && (
+          <div className="mt-4 space-y-4 border-t border-zinc-800 pt-4">
+            <div className="flex gap-2">
+              <select
+                value={selectedPatternId}
+                onChange={(event) => {
+                  setSelectedPatternId(event.target.value);
+                  setSchedulePreview(null);
+                }}
+                className="min-w-0 flex-1 rounded-xl border border-zinc-700 bg-zinc-950 p-3 text-sm text-zinc-100"
+                aria-label="Weekly schedule pattern"
+              >
+                <option value="">Select a pattern</option>
+                {state.weeklySchedulePatterns.map((pattern) => (
+                  <option key={pattern.id} value={pattern.id}>{pattern.name}</option>
+                ))}
+              </select>
+              <button type="button" onClick={createPattern} className="mobile-action bg-emerald-500 text-zinc-950">
+                <Plus className="h-4 w-4" /> New
+              </button>
+            </div>
+
+            {selectedPattern && (
+              <div className="space-y-3">
+                <input
+                  value={selectedPattern.name}
+                  onChange={(event) => updatePattern({ ...selectedPattern, name: event.target.value })}
+                  className="w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm font-bold text-zinc-100"
+                  aria-label="Pattern name"
+                />
+                {selectedPattern.entries.map((entry) => (
+                  <div key={entry.id} className="grid grid-cols-[6rem_minmax(0,1fr)_2.75rem] gap-2">
+                    <select
+                      value={entry.weekday}
+                      onChange={(event) => updatePattern({
+                        ...selectedPattern,
+                        entries: selectedPattern.entries.map((item) => item.id === entry.id
+                          ? { ...item, weekday: Number(event.target.value) as typeof item.weekday }
+                          : item),
+                      })}
+                      className="rounded-xl border border-zinc-800 bg-zinc-950 p-2 text-xs text-zinc-200"
+                      aria-label="Weekday"
+                    >
+                      {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, index) => (
+                        <option key={day} value={index + 1}>{day}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={entry.workoutTemplateId}
+                      onChange={(event) => updatePattern({
+                        ...selectedPattern,
+                        entries: selectedPattern.entries.map((item) => item.id === entry.id
+                          ? { ...item, workoutTemplateId: event.target.value }
+                          : item),
+                      })}
+                      className="min-w-0 rounded-xl border border-zinc-800 bg-zinc-950 p-2 text-xs text-zinc-200"
+                      aria-label="Workout template"
+                    >
+                      {state.workoutTemplates.map((template) => (
+                        <option key={template.id} value={template.id}>{template.name}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => updatePattern({
+                        ...selectedPattern,
+                        entries: selectedPattern.entries.filter((item) => item.id !== entry.id),
+                      })}
+                      className="touch-target rounded-xl border border-rose-500/20 bg-rose-500/10 text-rose-400"
+                      aria-label="Remove pattern entry"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  disabled={!state.workoutTemplates.length}
+                  onClick={() => updatePattern({
+                    ...selectedPattern,
+                    entries: [...selectedPattern.entries, {
+                      id: `pattern-entry-${Date.now()}`,
+                      weekday: 1,
+                      workoutTemplateId: state.workoutTemplates[0].id,
+                      order: selectedPattern.entries.length + 1,
+                    }],
+                  })}
+                  className="mobile-action secondary-action w-full"
+                >
+                  <Plus className="h-4 w-4" /> Add training day
+                </button>
+
+                <div className="grid grid-cols-[1fr_6rem] gap-2">
+                  <button
+                    type="button"
+                    disabled={!selectedWeek || !selectedPattern.entries.length}
+                    onClick={() => selectedWeek && setSchedulePreview(
+                      buildSchedulePreview(state, selectedPattern, selectedWeek, generationWeeks)
+                    )}
+                    className="mobile-action bg-sky-500 text-zinc-950"
+                  >
+                    Preview from week {selectedWeek?.isoWeek ?? '—'}
+                  </button>
+                  <select
+                    value={generationWeeks}
+                    onChange={(event) => setGenerationWeeks(Number(event.target.value))}
+                    className="rounded-xl border border-zinc-700 bg-zinc-950 p-2 text-xs text-zinc-200"
+                    aria-label="Number of weeks"
+                  >
+                    {[1, 2, 4, 6, 8, 12].map((count) => (
+                      <option key={count} value={count}>{count} weeks</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+
+            <button
+              type="button"
+              disabled={!selectedWeek || selectedWeekIndex <= 0 || isLocked}
+              onClick={copyPreviousWeek}
+              className="mobile-action secondary-action w-full"
+            >
+              <Copy className="h-4 w-4" /> Copy previous week
+            </button>
+          </div>
+        )}
+      </section>
+
+      {schedulePreview && selectedPattern && (
+        <div className="mobile-sheet-layer items-end sm:items-center justify-center" role="dialog" aria-modal="true">
+          <div className="max-h-[88dvh] w-full max-w-xl overflow-y-auto rounded-t-2xl border border-zinc-700 bg-zinc-900 p-5 sm:rounded-2xl">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-zinc-100">Generation preview</h2>
+                <p className="text-xs text-zinc-500">
+                  {schedulePreview.items.filter((item) => item.status === 'create' || item.status === 'conflict').length} sessions can be created
+                </p>
+              </div>
+              <button onClick={() => setSchedulePreview(null)} className="touch-target text-zinc-400" aria-label="Close preview">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="mt-4 space-y-2">
+              {schedulePreview.items.map((item) => (
+                <div key={item.id} className="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-xs">
+                  <div>
+                    <div className="font-bold text-zinc-100">{item.title}</div>
+                    <div className="text-zinc-500">{item.date} · W{item.week.isoWeek}</div>
+                  </div>
+                  <span className={`rounded-full px-2 py-1 font-mono text-[10px] ${
+                    item.status === 'create' ? 'bg-emerald-500/10 text-emerald-400' :
+                    item.status === 'conflict' ? 'bg-amber-500/10 text-amber-400' :
+                    'bg-zinc-800 text-zinc-500'
+                  }`}>
+                    {item.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                onUpdateState(applySchedulePreview(state, selectedPattern, schedulePreview));
+                setSchedulePreview(null);
+                notify('Weekly schedule generated.');
+              }}
+              className="mobile-action sticky bottom-0 mt-4 w-full bg-emerald-500 text-zinc-950"
+            >
+              Generate schedule
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Unlock Week Confirmation Modal */}
       {showUnlockConfirm && (
@@ -993,6 +1309,16 @@ export const WeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
 
                             <div className="flex items-center space-x-1">
                               <button
+                                onClick={() => {
+                                  setReplacementTargetId(pe.id);
+                                  setReplacementExerciseId(state.exercises.find((item) => item.id !== pe.exerciseId)?.id ?? pe.exerciseId);
+                                }}
+                                className="rounded-lg bg-zinc-900 px-2 py-1.5 font-mono text-[10px] text-sky-400"
+                                title="Replace exercise"
+                              >
+                                Replace
+                              </button>
+                              <button
                                 disabled={peIdx === 0}
                                 onClick={() => handleReorderExercise(peIdx, 'up')}
                                 className="p-1.5 rounded-lg bg-zinc-900 text-zinc-400 hover:text-zinc-200 disabled:opacity-30"
@@ -1126,6 +1452,43 @@ export const WeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
               >
                 SAVE WORKOUT PLAN
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {replacementTargetId && editingWorkout && (
+        <div className="mobile-sheet-layer items-end justify-center sm:items-center" role="dialog" aria-modal="true">
+          <div className="w-full max-w-md rounded-t-2xl border border-zinc-700 bg-zinc-900 p-5 sm:rounded-2xl">
+            <h2 className="text-lg font-bold text-zinc-100">Replace exercise</h2>
+            <div className="mt-4 space-y-3">
+              <select
+                value={replacementExerciseId}
+                onChange={(event) => setReplacementExerciseId(event.target.value)}
+                className="w-full rounded-xl border border-zinc-700 bg-zinc-950 p-3 text-sm text-zinc-100"
+              >
+                {state.exercises.map((exercise) => (
+                  <option key={exercise.id} value={exercise.id}>{exercise.name}</option>
+                ))}
+              </select>
+              <label className="block text-xs text-zinc-400">
+                Scope
+                <select
+                  value={replacementScope}
+                  onChange={(event) => setReplacementScope(event.target.value as typeof replacementScope)}
+                  className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 p-3 text-sm text-zinc-100"
+                >
+                  <option value="workout">This planned workout only</option>
+                  {editingWorkout.workoutTemplateId && (
+                    <option value="template-future">Template and future unstarted workouts</option>
+                  )}
+                </select>
+              </label>
+              <p className="text-xs text-zinc-500">Started, completed, and locked workout history will not change.</p>
+            </div>
+            <div className="mt-5 grid grid-cols-2 gap-2">
+              <button onClick={() => setReplacementTargetId(null)} className="mobile-action secondary-action">Cancel</button>
+              <button onClick={applyExerciseReplacement} className="mobile-action bg-emerald-500 text-zinc-950">Replace</button>
             </div>
           </div>
         </div>

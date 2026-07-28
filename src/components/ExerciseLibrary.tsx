@@ -12,6 +12,7 @@ import {
   X,
   ArrowUp,
   ArrowDown,
+  Copy,
 } from 'lucide-react';
 import {
   AppState,
@@ -23,6 +24,7 @@ import {
   PlannedSet,
 } from '../types';
 import { ExerciseDetailModal } from './ExerciseDetailModal';
+import { notify } from '../lib/notifications';
 
 interface ExerciseLibraryProps {
   state: AppState;
@@ -60,6 +62,13 @@ export const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
   const [editExCategory, setEditExCategory] = useState<ExerciseCategory>('Strength');
   const [editExStrategy, setEditExStrategy] = useState<ProgressionStrategy>('Double Progression');
   const [editExDefaultNotes, setEditExDefaultNotes] = useState('');
+  const [editRestSeconds, setEditRestSeconds] = useState(120);
+  const [editWeightIncrement, setEditWeightIncrement] = useState(2.5);
+  const [editRepMin, setEditRepMin] = useState(8);
+  const [editRepMax, setEditRepMax] = useState(12);
+  const [editTargetRir, setEditTargetRir] = useState<0 | 1 | 2 | 3 | 4 | 5>(2);
+  const [editStepExposures, setEditStepExposures] = useState(3);
+  const [editDeloadPercent, setEditDeloadPercent] = useState(7.5);
 
   // Template Editing State
   const [editingTemplate, setEditingTemplate] = useState<WorkoutTemplate | null>(null);
@@ -79,9 +88,58 @@ export const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
     setEditingTemplate(newTpl);
   };
 
+  const duplicateTemplate = (template: WorkoutTemplate) => {
+    const now = Date.now();
+    const copy: WorkoutTemplate = {
+      ...template,
+      id: `tpl-${now}`,
+      name: `${template.name} copy`,
+      plannedExercises: template.plannedExercises.map((entry, index) => ({
+        ...entry,
+        id: `tpe-${now}-${index}`,
+        plannedSets: entry.plannedSets.map((set) => ({ ...set })),
+      })),
+    };
+    onUpdateState({ ...state, workoutTemplates: [...state.workoutTemplates, copy] });
+    setEditingTemplate(copy);
+  };
+
+  const duplicateExercise = (exercise: Exercise) => {
+    const copy: Exercise = {
+      ...exercise,
+      id: `ex-custom-${Date.now()}`,
+      name: `${exercise.name} copy`,
+      primaryMuscles: [...exercise.primaryMuscles],
+      secondaryMuscles: [...exercise.secondaryMuscles],
+    };
+    onUpdateState({ ...state, exercises: [copy, ...state.exercises] });
+    handleStartEdit(copy);
+  };
+
   // Handle Save Template
   const handleSaveTemplate = () => {
     if (!editingTemplate || !editingTemplate.name.trim()) return;
+    if (!editingTemplate.plannedExercises.length) {
+      notify('Add at least one exercise before saving this template.', 'error');
+      return;
+    }
+    const invalid = editingTemplate.plannedExercises.some((entry) =>
+      !state.exercises.some((exercise) => exercise.id === entry.exerciseId) ||
+      !entry.plannedSets.length ||
+      entry.plannedSets.some((set) =>
+        !Number.isFinite(set.plannedReps) ||
+        set.plannedReps <= 0 ||
+        !Number.isFinite(set.plannedWeight) ||
+        set.plannedWeight < 0
+      ) ||
+      (entry.repRangeMin !== undefined &&
+        entry.repRangeMax !== undefined &&
+        entry.repRangeMin > entry.repRangeMax)
+    );
+    if (invalid) {
+      notify('Fix missing exercises, empty sets, or invalid reps and weights before saving.', 'error');
+      return;
+    }
 
     const exists = state.workoutTemplates.some((t) => t.id === editingTemplate.id);
     let updatedTemplates: WorkoutTemplate[];
@@ -232,6 +290,27 @@ export const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
     });
   };
 
+  const applyBulkTemplateTarget = (
+    peIdx: number,
+    sets: number,
+    reps: number,
+    weight: number
+  ) => {
+    if (!editingTemplate) return;
+    const entries = [...editingTemplate.plannedExercises];
+    const entry = entries[peIdx];
+    entries[peIdx] = {
+      ...entry,
+      plannedSets: Array.from({ length: Math.max(1, sets) }, (_, index) => ({
+        ...(entry.plannedSets[index] ?? entry.plannedSets.at(-1) ?? {}),
+        setNumber: index + 1,
+        plannedReps: Math.max(1, reps),
+        plannedWeight: Math.max(0, weight),
+      })),
+    };
+    setEditingTemplate({ ...editingTemplate, plannedExercises: entries });
+  };
+
   // Reorder template exercise
   const handleReorderTemplateExercise = (index: number, direction: 'up' | 'down') => {
     if (!editingTemplate) return;
@@ -281,6 +360,13 @@ export const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
       progressionStrategy: newExStrategy,
       prMetric: newExMetric,
       category: newExCategory,
+      defaultRestSeconds: state.preferences.defaultRestSeconds,
+      weightIncrementKg: state.preferences.preferredWeightIncrementKg,
+      repRangeMin: 8,
+      repRangeMax: 12,
+      targetRir: 2,
+      stepLoadingExposures: 3,
+      deloadPercent: 7.5,
     };
     const trimmedDefaultNotes = newExDefaultNotes.trim();
     if (trimmedDefaultNotes) newEx.defaultNotes = trimmedDefaultNotes;
@@ -308,6 +394,13 @@ export const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
     setEditExCategory(e.category);
     setEditExStrategy(e.progressionStrategy);
     setEditExDefaultNotes(e.defaultNotes || '');
+    setEditRestSeconds(e.defaultRestSeconds ?? state.preferences.defaultRestSeconds);
+    setEditWeightIncrement(e.weightIncrementKg ?? state.preferences.preferredWeightIncrementKg);
+    setEditRepMin(e.repRangeMin ?? 8);
+    setEditRepMax(e.repRangeMax ?? 12);
+    setEditTargetRir(e.targetRir ?? 2);
+    setEditStepExposures(e.stepLoadingExposures ?? 3);
+    setEditDeloadPercent(e.deloadPercent ?? 7.5);
   };
 
   // Handle Save Edited Exercise
@@ -324,6 +417,13 @@ export const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
       progressionStrategy: editExStrategy,
       prMetric: editExMetric,
       category: editExCategory,
+      defaultRestSeconds: Math.max(0, editRestSeconds),
+      weightIncrementKg: Math.max(0.25, editWeightIncrement),
+      repRangeMin: Math.max(1, editRepMin),
+      repRangeMax: Math.max(editRepMin, editRepMax),
+      targetRir: editTargetRir,
+      stepLoadingExposures: Math.max(1, editStepExposures),
+      deloadPercent: Math.min(50, Math.max(0, editDeloadPercent)),
     };
     const trimmedDefaultNotes = editExDefaultNotes.trim();
     if (trimmedDefaultNotes) updatedExercise.defaultNotes = trimmedDefaultNotes;
@@ -406,6 +506,58 @@ export const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
         </button>
       </div>
 
+      <div className="grid grid-cols-2 gap-2 rounded-2xl border border-zinc-800 bg-zinc-900 p-3 text-xs sm:grid-cols-4">
+        <label className="text-[9px] font-mono uppercase text-zinc-500">
+          Default rest
+          <input
+            type="number"
+            min="0"
+            value={state.preferences.defaultRestSeconds}
+            onChange={(event) => onUpdateState({
+              ...state,
+              preferences: { ...state.preferences, defaultRestSeconds: Math.max(0, Number(event.target.value)) },
+            })}
+            className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-sm text-zinc-100"
+          />
+        </label>
+        <label className="text-[9px] font-mono uppercase text-zinc-500">
+          Weight step
+          <input
+            type="number"
+            min="0.25"
+            step="0.25"
+            value={state.preferences.preferredWeightIncrementKg}
+            onChange={(event) => onUpdateState({
+              ...state,
+              preferences: { ...state.preferences, preferredWeightIncrementKg: Math.max(0.25, Number(event.target.value)) },
+            })}
+            className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-sm text-zinc-100"
+          />
+        </label>
+        <label className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-zinc-300">
+          Timer sound
+          <input
+            type="checkbox"
+            checked={state.preferences.timerSound}
+            onChange={(event) => onUpdateState({
+              ...state,
+              preferences: { ...state.preferences, timerSound: event.target.checked },
+            })}
+          />
+        </label>
+        <label className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-zinc-300">
+          Vibration
+          <input
+            type="checkbox"
+            checked={state.preferences.timerVibration}
+            onChange={(event) => onUpdateState({
+              ...state,
+              preferences: { ...state.preferences, timerVibration: event.target.checked },
+            })}
+          />
+        </label>
+      </div>
+
       {/* Exercises SubTab View */}
       {activeSubTab === 'exercises' && (
         <div className="space-y-6">
@@ -452,6 +604,13 @@ export const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                       <span className="text-[10px] font-mono text-zinc-500">
                         PR Metric: <strong className="text-purple-400">{e.prMetric}</strong>
                       </span>
+                      <button
+                        onClick={() => duplicateExercise(e)}
+                        className="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition"
+                        title="Duplicate Exercise"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
                       <button
                         onClick={() => handleStartEdit(e)}
                         className="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition"
@@ -515,6 +674,13 @@ export const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                       <p className="text-xs text-zinc-400 mt-1">{tpl.description}</p>
                     </div>
                     <div className="flex items-center space-x-1">
+                      <button
+                        onClick={() => duplicateTemplate(tpl)}
+                        className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sky-400 transition"
+                        title="Duplicate Template"
+                      >
+                        <Copy className="w-4 h-4" />
+                      </button>
                       <button
                         onClick={() => setEditingTemplate(tpl)}
                         className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-emerald-400 transition"
@@ -701,6 +867,95 @@ export const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
 
                           {/* Sets List Editor */}
                           <div className="space-y-2">
+                            <div className="grid grid-cols-2 gap-2 rounded-xl border border-zinc-800 bg-zinc-900/70 p-2 sm:grid-cols-5">
+                              <label className="text-[9px] uppercase text-zinc-500">
+                                Sets
+                                <input
+                                  type="number"
+                                  min="1"
+                                  defaultValue={pe.plannedSets.length}
+                                  onBlur={(event) => applyBulkTemplateTarget(
+                                    peIdx,
+                                    Number(event.target.value),
+                                    pe.plannedSets[0]?.plannedReps ?? 8,
+                                    pe.plannedSets[0]?.plannedWeight ?? 0
+                                  )}
+                                  className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-center text-zinc-100"
+                                />
+                              </label>
+                              <label className="text-[9px] uppercase text-zinc-500">
+                                Reps
+                                <input
+                                  type="number"
+                                  min="1"
+                                  defaultValue={pe.plannedSets[0]?.plannedReps ?? 8}
+                                  onBlur={(event) => applyBulkTemplateTarget(
+                                    peIdx,
+                                    pe.plannedSets.length,
+                                    Number(event.target.value),
+                                    pe.plannedSets[0]?.plannedWeight ?? 0
+                                  )}
+                                  className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-center text-zinc-100"
+                                />
+                              </label>
+                              <label className="text-[9px] uppercase text-zinc-500">
+                                Weight
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.5"
+                                  defaultValue={pe.plannedSets[0]?.plannedWeight ?? 0}
+                                  onBlur={(event) => applyBulkTemplateTarget(
+                                    peIdx,
+                                    pe.plannedSets.length,
+                                    pe.plannedSets[0]?.plannedReps ?? 8,
+                                    Number(event.target.value)
+                                  )}
+                                  className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-center text-zinc-100"
+                                />
+                              </label>
+                              <label className="text-[9px] uppercase text-zinc-500">
+                                Rest
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={pe.restSeconds ?? ex?.defaultRestSeconds ?? state.preferences.defaultRestSeconds}
+                                  onChange={(event) => {
+                                    const entries = [...editingTemplate.plannedExercises];
+                                    entries[peIdx] = { ...pe, restSeconds: Math.max(0, Number(event.target.value)) };
+                                    setEditingTemplate({ ...editingTemplate, plannedExercises: entries });
+                                  }}
+                                  className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-center text-zinc-100"
+                                />
+                              </label>
+                              <label className="text-[9px] uppercase text-zinc-500">
+                                Block
+                                <select
+                                  value={pe.blockType ?? 'straight'}
+                                  onChange={(event) => {
+                                    const blockType = event.target.value as 'straight' | 'superset' | 'circuit';
+                                    const entries = [...editingTemplate.plannedExercises];
+                                    entries[peIdx] = {
+                                      ...pe,
+                                      blockType,
+                                      blockId: blockType === 'straight'
+                                        ? undefined
+                                        : pe.blockId ?? (
+                                          entries[peIdx - 1]?.blockType === blockType
+                                            ? entries[peIdx - 1]?.blockId
+                                            : `${blockType}-${Date.now()}`
+                                        ),
+                                    };
+                                    setEditingTemplate({ ...editingTemplate, plannedExercises: entries });
+                                  }}
+                                  className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-zinc-100"
+                                >
+                                  <option value="straight">Straight</option>
+                                  <option value="superset">Superset</option>
+                                  <option value="circuit">Circuit</option>
+                                </select>
+                              </label>
+                            </div>
                             <div className="hidden sm:grid grid-cols-[50px_1fr_1fr_40px] gap-2 text-[10px] font-mono uppercase text-zinc-500 font-bold px-1">
                               <span>SET</span>
                               <span>START REPS</span>
@@ -1049,6 +1304,35 @@ export const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                   onChange={(e) => setEditExName(e.target.value)}
                   className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-zinc-200 focus:outline-none"
                 />
+              </div>
+
+              <div>
+                <label className="text-zinc-400 uppercase block mb-2">Training Defaults</label>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <label className="text-[9px] text-zinc-500">REST (SEC)
+                    <input type="number" min="0" value={editRestSeconds} onChange={(e) => setEditRestSeconds(Number(e.target.value))} className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-zinc-100" />
+                  </label>
+                  <label className="text-[9px] text-zinc-500">INCREMENT KG
+                    <input type="number" min="0.25" step="0.25" value={editWeightIncrement} onChange={(e) => setEditWeightIncrement(Number(e.target.value))} className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-zinc-100" />
+                  </label>
+                  <label className="text-[9px] text-zinc-500">MIN REPS
+                    <input type="number" min="1" value={editRepMin} onChange={(e) => setEditRepMin(Number(e.target.value))} className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-zinc-100" />
+                  </label>
+                  <label className="text-[9px] text-zinc-500">MAX REPS
+                    <input type="number" min={editRepMin} value={editRepMax} onChange={(e) => setEditRepMax(Number(e.target.value))} className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-zinc-100" />
+                  </label>
+                  <label className="text-[9px] text-zinc-500">TARGET RIR
+                    <select value={editTargetRir} onChange={(e) => setEditTargetRir(Number(e.target.value) as typeof editTargetRir)} className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-zinc-100">
+                      {[0, 1, 2, 3, 4, 5].map((value) => <option key={value} value={value}>{value}</option>)}
+                    </select>
+                  </label>
+                  <label className="text-[9px] text-zinc-500">STEP EXPOSURES
+                    <input type="number" min="1" value={editStepExposures} onChange={(e) => setEditStepExposures(Number(e.target.value))} className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-zinc-100" />
+                  </label>
+                  <label className="text-[9px] text-zinc-500">DELOAD %
+                    <input type="number" min="0" max="50" step="0.5" value={editDeloadPercent} onChange={(e) => setEditDeloadPercent(Number(e.target.value))} className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-zinc-100" />
+                  </label>
+                </div>
               </div>
 
               <div>
