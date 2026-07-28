@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Activity,
   Award,
@@ -76,25 +76,45 @@ export const WeeklyReviewView: React.FC<WeeklyReviewViewProps> = ({ state, onUpd
     weight: number;
   } | null>(null);
 
-  const selectedWeek = state.weeks.find((w) => w.id === selectedWeekId) || state.weeks[0];
+  const selectedWeek = useMemo(
+    () => state.weeks.find((week) => week.id === selectedWeekId) || state.weeks[0],
+    [selectedWeekId, state.weeks]
+  );
 
-  const workoutsInWeek = selectedWeek
-    ? state.scheduledWorkouts.filter((sw) => sw.weekId === selectedWeek.id)
-    : [];
+  const workoutsInWeek = useMemo(
+    () =>
+      selectedWeek
+        ? state.scheduledWorkouts.filter((workout) => workout.weekId === selectedWeek.id)
+        : [],
+    [selectedWeek, state.scheduledWorkouts]
+  );
 
   // Workouts review summary
-  let totalPlannedVolume = 0;
-  let totalExecutedVolume = 0;
-  let completedWorkoutsCount = 0;
-
-  workoutsInWeek.forEach((sw) => {
-    totalPlannedVolume += calculatePlannedVolume(sw);
-    const exec = state.workoutExecutions.find((e) => e.scheduledWorkoutId === sw.id);
-    if (exec) {
-      totalExecutedVolume += calculateExecutionVolume(exec);
-      if (sw.status === 'Completed') completedWorkoutsCount++;
-    }
-  });
+  const {
+    totalPlannedVolume,
+    totalExecutedVolume,
+    completedWorkoutsCount,
+  } = useMemo(() => {
+    const executionsByWorkout = new Map<string, AppState['workoutExecutions'][number]>(
+      state.workoutExecutions.map(
+        (execution) => [execution.scheduledWorkoutId, execution] as const
+      )
+    );
+    return workoutsInWeek.reduce(
+      (summary, workout) => {
+        summary.totalPlannedVolume += calculatePlannedVolume(workout);
+        const execution = executionsByWorkout.get(workout.id);
+        if (execution) summary.totalExecutedVolume += calculateExecutionVolume(execution);
+        if (workout.status === 'Completed') summary.completedWorkoutsCount += 1;
+        return summary;
+      },
+      {
+        totalPlannedVolume: 0,
+        totalExecutedVolume: 0,
+        completedWorkoutsCount: 0,
+      }
+    );
+  }, [state.workoutExecutions, workoutsInWeek]);
 
   const volumeCompletionPct =
     totalPlannedVolume > 0
@@ -102,39 +122,81 @@ export const WeeklyReviewView: React.FC<WeeklyReviewViewProps> = ({ state, onUpd
       : 100;
 
   // Muscle volume analytics calculation
-  const muscleAnalytics = calculateMuscleVolumeAnalytics(state);
-  const pendingRecommendations = state.progressionRecommendations.filter(
-    (item) => item.status === 'pending'
+  const muscleAnalytics = useMemo(
+    () => calculateMuscleVolumeAnalytics(state),
+    [
+      state.exercises,
+      state.scheduledWorkouts,
+      state.weeks,
+      state.workoutExecutions,
+    ]
   );
-  const recentWeeks = [...state.weeks]
-    .sort((a, b) => a.year - b.year || a.isoWeek - b.isoWeek)
-    .slice(-4);
-  const recentWeekIds = new Set(recentWeeks.map((week) => week.id));
-  const recentWorkouts = state.scheduledWorkouts.filter((workout) => recentWeekIds.has(workout.weekId));
-  const recentExecutions = state.workoutExecutions.filter((execution) =>
-    recentWorkouts.some((workout) => workout.id === execution.scheduledWorkoutId)
+  const pendingRecommendations = useMemo(
+    () => state.progressionRecommendations.filter((item) => item.status === 'pending'),
+    [state.progressionRecommendations]
   );
-  const recentVolume = recentExecutions.reduce(
-    (sum, execution) => sum + calculateExecutionVolume(execution), 0
+  const {
+    recentWorkouts,
+    recentExecutions,
+    recentVolume,
+    plannedSets,
+    completedSets,
+  } = useMemo(() => {
+    const recentWeeks = [...state.weeks]
+      .sort((a, b) => a.year - b.year || a.isoWeek - b.isoWeek)
+      .slice(-4);
+    const recentWeekIds = new Set(recentWeeks.map((week) => week.id));
+    const workouts = state.scheduledWorkouts.filter((workout) =>
+      recentWeekIds.has(workout.weekId)
+    );
+    const workoutIds = new Set(workouts.map((workout) => workout.id));
+    const executions = state.workoutExecutions.filter((execution) =>
+      workoutIds.has(execution.scheduledWorkoutId)
+    );
+    return {
+      recentWorkouts: workouts,
+      recentExecutions: executions,
+      recentVolume: executions.reduce(
+        (sum, execution) => sum + calculateExecutionVolume(execution),
+        0
+      ),
+      plannedSets: workouts.reduce(
+        (sum, workout) =>
+          sum +
+          workout.plannedExercises.reduce(
+            (exerciseSum, exercise) => exerciseSum + exercise.plannedSets.length,
+            0
+          ),
+        0
+      ),
+      completedSets: executions.reduce(
+        (sum, execution) =>
+          sum +
+          execution.exerciseExecutions.reduce(
+            (exerciseSum, exercise) =>
+              exerciseSum + exercise.setExecutions.filter((set) => set.completed).length,
+            0
+          ),
+        0
+      ),
+    };
+  }, [state.scheduledWorkouts, state.weeks, state.workoutExecutions]);
+  const recentPrs = useMemo(
+    () => Object.values(calculatePersonalRecords(state)).slice(0, 5),
+    [state.exercises, state.scheduledWorkouts, state.workoutExecutions]
   );
-  const plannedSets = recentWorkouts.reduce(
-    (sum, workout) => sum + workout.plannedExercises.reduce(
-      (exerciseSum, exercise) => exerciseSum + exercise.plannedSets.length, 0
-    ), 0
-  );
-  const completedSets = recentExecutions.reduce(
-    (sum, execution) => sum + execution.exerciseExecutions.reduce(
-      (exerciseSum, exercise) =>
-        exerciseSum + exercise.setExecutions.filter((set) => set.completed).length, 0
-    ), 0
-  );
-  const recentPrs = calculatePersonalRecords(state).slice(0, 5);
 
   // Strength progress report calculation for selected exercise
-  const strengthReport = getExerciseAnalyticsReport(
-    selectedExerciseId,
-    state,
-    strengthTimeFilter
+  const strengthReport = useMemo(
+    () => getExerciseAnalyticsReport(selectedExerciseId, state, strengthTimeFilter),
+    [
+      selectedExerciseId,
+      state.exercises,
+      state.scheduledWorkouts,
+      state.weeks,
+      state.workoutExecutions,
+      strengthTimeFilter,
+    ]
   );
 
   // Helper for heatmap cell color based on completed set volume

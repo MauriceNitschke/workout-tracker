@@ -1,12 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  GoogleAuthProvider,
-  onAuthStateChanged,
-  signInWithPopup,
-  signOut,
-} from 'firebase/auth';
 import { AppState, CloudUser, SyncStatus } from '../types';
-import { auth, isFirebaseConfigured } from '../lib/firebase';
+import { getFirebaseServices, isFirebaseConfigured } from '../lib/firebase';
 import {
   cloudDatasetExists,
   loadCloudState,
@@ -24,6 +18,21 @@ interface UseCloudAccountOptions {
   setState: (state: AppState) => void;
 }
 
+function getCloudClientId(): string {
+  const storageKey = 'training-os-cloud-client-id';
+  try {
+    // A tab/session-specific ID lets a second tab on the same device receive
+    // updates instead of mistaking them for its own writes.
+    const existing = sessionStorage.getItem(storageKey);
+    if (existing) return existing;
+    const created = crypto.randomUUID();
+    sessionStorage.setItem(storageKey, created);
+    return created;
+  } catch {
+    return crypto.randomUUID();
+  }
+}
+
 export function useCloudAccount({ state, setState }: UseCloudAccountOptions) {
   const [user, setUser] = useState<CloudUser | null>(null);
   const [status, setStatus] = useState<SyncStatus>(
@@ -38,6 +47,8 @@ export function useCloudAccount({ state, setState }: UseCloudAccountOptions) {
   const lastCloudState = useRef<AppState | null>(null);
   const lastSavedJSON = useRef('');
   const unsubscribeCloud = useRef<(() => void) | null>(null);
+  const clientId = useRef(getCloudClientId());
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
     stateRef.current = state;
@@ -56,75 +67,104 @@ export function useCloudAccount({ state, setState }: UseCloudAccountOptions) {
     };
   }, [user]);
 
-  useEffect(() => {
-    if (!auth) return;
-
-    return onAuthStateChanged(auth, async (firebaseUser) => {
-      unsubscribeCloud.current?.();
-      cloudReady.current = false;
-      lastCloudState.current = null;
-      setNeedsInitialization(false);
-
-      if (!firebaseUser) {
-        setUser(null);
-        setState(loadGuestAppState());
-        setStatus('guest');
-        return;
+  const installCloudSubscription = useCallback(async (uid: string) => {
+    const unsubscribe = await subscribeToCloudState(
+      uid,
+      {
+        clientId: clientId.current,
+        getCurrentState: () => stateRef.current,
+      },
+      (nextState) => {
+        const serialized = JSON.stringify(nextState);
+        if (serialized === lastSavedJSON.current) return;
+        applyingCloud.current = true;
+        lastCloudState.current = nextState;
+        lastSavedJSON.current = serialized;
+        stateRef.current = nextState;
+        setState(nextState);
+        applyingCloud.current = false;
+        setStatus(navigator.onLine ? 'synced' : 'offline');
+        setLastSyncedAt(new Date().toISOString());
+      },
+      (syncError) => {
+        setError(syncError.message);
+        setStatus(navigator.onLine ? 'error' : 'offline');
       }
+    );
+    unsubscribeCloud.current?.();
+    unsubscribeCloud.current = unsubscribe;
+  }, [setState]);
 
-      const cloudUser: CloudUser = {
-        uid: firebaseUser.uid,
-        displayName: firebaseUser.displayName,
-        email: firebaseUser.email,
-        photoURL: firebaseUser.photoURL,
-      };
-      setUser(cloudUser);
-      setStatus('loading');
-      setError(null);
-      archiveGuestAppState(stateRef.current);
+  useEffect(() => {
+    if (!isFirebaseConfigured) return;
+    let active = true;
+    let unsubscribeAuth: (() => void) | null = null;
 
-      try {
-        if (!(await cloudDatasetExists(firebaseUser.uid))) {
-          setNeedsInitialization(true);
-          setStatus('needs-initialization');
+    void getFirebaseServices().then(({ auth, authApi }) => {
+      if (!active) return;
+      unsubscribeAuth = authApi.onAuthStateChanged(auth, async (firebaseUser) => {
+        unsubscribeCloud.current?.();
+        cloudReady.current = false;
+        lastCloudState.current = null;
+        setNeedsInitialization(false);
+
+        if (!firebaseUser) {
+          const guestState = loadGuestAppState();
+          setUser(null);
+          stateRef.current = guestState;
+          setState(guestState);
+          setStatus('guest');
           return;
         }
 
-        const cloudState = await loadCloudState(firebaseUser.uid);
-        if (!cloudState) throw new Error('The cloud dataset could not be loaded.');
-        applyingCloud.current = true;
-        lastCloudState.current = cloudState;
-        lastSavedJSON.current = JSON.stringify(cloudState);
-        setState(cloudState);
-        applyingCloud.current = false;
-        cloudReady.current = true;
-        setStatus(navigator.onLine ? 'synced' : 'offline');
-        setLastSyncedAt(new Date().toISOString());
+        const cloudUser: CloudUser = {
+          uid: firebaseUser.uid,
+          displayName: firebaseUser.displayName,
+          email: firebaseUser.email,
+          photoURL: firebaseUser.photoURL,
+        };
+        setUser(cloudUser);
+        setStatus('loading');
+        setError(null);
+        archiveGuestAppState(stateRef.current);
 
-        unsubscribeCloud.current = subscribeToCloudState(
-          firebaseUser.uid,
-          (nextState) => {
-            const serialized = JSON.stringify(nextState);
-            if (serialized === lastSavedJSON.current) return;
-            applyingCloud.current = true;
-            lastCloudState.current = nextState;
-            lastSavedJSON.current = serialized;
-            setState(nextState);
-            applyingCloud.current = false;
-            setStatus(navigator.onLine ? 'synced' : 'offline');
-            setLastSyncedAt(new Date().toISOString());
-          },
-          (syncError) => {
-            setError(syncError.message);
-            setStatus(navigator.onLine ? 'error' : 'offline');
+        try {
+          if (!(await cloudDatasetExists(firebaseUser.uid))) {
+            setNeedsInitialization(true);
+            setStatus('needs-initialization');
+            return;
           }
-        );
-      } catch (reason) {
-        setError(reason instanceof Error ? reason.message : 'Cloud data could not be loaded.');
-        setStatus(navigator.onLine ? 'error' : 'offline');
-      }
+
+          const cloudState = await loadCloudState(firebaseUser.uid);
+          if (!cloudState) throw new Error('The cloud dataset could not be loaded.');
+          applyingCloud.current = true;
+          lastCloudState.current = cloudState;
+          lastSavedJSON.current = JSON.stringify(cloudState);
+          stateRef.current = cloudState;
+          setState(cloudState);
+          applyingCloud.current = false;
+          cloudReady.current = true;
+          setStatus(navigator.onLine ? 'synced' : 'offline');
+          setLastSyncedAt(new Date().toISOString());
+
+          await installCloudSubscription(firebaseUser.uid);
+        } catch (reason) {
+          setError(reason instanceof Error ? reason.message : 'Cloud data could not be loaded.');
+          setStatus(navigator.onLine ? 'error' : 'offline');
+        }
+      });
+    }).catch((reason) => {
+      if (!active) return;
+      setError(reason instanceof Error ? reason.message : 'Firebase could not be loaded.');
+      setStatus('error');
     });
-  }, [setState]);
+
+    return () => {
+      active = false;
+      unsubscribeAuth?.();
+      unsubscribeCloud.current?.();
+    };
+  }, [installCloudSubscription, setState]);
 
   useEffect(() => {
     if (!user) {
@@ -135,34 +175,43 @@ export function useCloudAccount({ state, setState }: UseCloudAccountOptions) {
 
     const serialized = JSON.stringify(state);
     if (serialized === lastSavedJSON.current) return;
-    const timeout = window.setTimeout(async () => {
-      setStatus(navigator.onLine ? 'saving' : 'offline');
-      try {
-        await saveCloudState(user.uid, state, lastCloudState.current ?? undefined);
-        lastSavedJSON.current = serialized;
-        lastCloudState.current = state;
-        setStatus(navigator.onLine ? 'synced' : 'offline');
-        setLastSyncedAt(new Date().toISOString());
-      } catch (reason) {
-        setError(reason instanceof Error ? reason.message : 'Cloud save failed.');
-        setStatus(navigator.onLine ? 'error' : 'offline');
-      }
+    const timeout = window.setTimeout(() => {
+      saveQueue.current = saveQueue.current.then(async () => {
+        if (serialized === lastSavedJSON.current) return;
+        setStatus(navigator.onLine ? 'saving' : 'offline');
+        try {
+          await saveCloudState(
+            user.uid,
+            state,
+            lastCloudState.current ?? undefined,
+            clientId.current
+          );
+          lastSavedJSON.current = serialized;
+          lastCloudState.current = state;
+          setStatus(navigator.onLine ? 'synced' : 'offline');
+          setLastSyncedAt(new Date().toISOString());
+        } catch (reason) {
+          setError(reason instanceof Error ? reason.message : 'Cloud save failed.');
+          setStatus(navigator.onLine ? 'error' : 'offline');
+        }
+      });
     }, 700);
     return () => window.clearTimeout(timeout);
   }, [needsInitialization, state, user]);
 
   const startGoogleSignIn = useCallback(async () => {
-    if (!auth) {
+    if (!isFirebaseConfigured) {
       setError('Firebase is not configured for this deployment.');
       return;
     }
     setStatus('loading');
     setError(null);
-    const provider = new GoogleAuthProvider();
     try {
+      const { auth, authApi } = await getFirebaseServices();
+      const provider = new authApi.GoogleAuthProvider();
       // Redirect auth relies on cross-origin storage hosted at firebaseapp.com.
       // Safari blocks that storage when this app is served from GitHub Pages.
-      await signInWithPopup(auth, provider);
+      await authApi.signInWithPopup(auth, provider);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Google sign-in failed.');
       setStatus('error');
@@ -170,10 +219,11 @@ export function useCloudAccount({ state, setState }: UseCloudAccountOptions) {
   }, []);
 
   const signOutAccount = useCallback(async () => {
-    if (!auth) return;
+    if (!isFirebaseConfigured) return;
     unsubscribeCloud.current?.();
     cloudReady.current = false;
-    await signOut(auth);
+    const { auth, authApi } = await getFirebaseServices();
+    await authApi.signOut(auth);
   }, []);
 
   const initializeCloud = useCallback(
@@ -197,33 +247,22 @@ export function useCloudAccount({ state, setState }: UseCloudAccountOptions) {
               recoveryActivities: [],
               activeWorkoutId: null,
             };
-        await saveCloudState(user.uid, stateToSave);
+        await saveCloudState(user.uid, stateToSave, undefined, clientId.current);
         lastSavedJSON.current = JSON.stringify(stateToSave);
         lastCloudState.current = stateToSave;
+        stateRef.current = stateToSave;
         setState(stateToSave);
         cloudReady.current = true;
         setNeedsInitialization(false);
         setStatus('synced');
         setLastSyncedAt(new Date().toISOString());
-        unsubscribeCloud.current = subscribeToCloudState(
-          user.uid,
-          (nextState) => {
-            lastCloudState.current = nextState;
-            lastSavedJSON.current = JSON.stringify(nextState);
-            setState(nextState);
-            setStatus(navigator.onLine ? 'synced' : 'offline');
-          },
-          (syncError) => {
-            setError(syncError.message);
-            setStatus('error');
-          }
-        );
+        await installCloudSubscription(user.uid);
       } catch (reason) {
         setError(reason instanceof Error ? reason.message : 'Cloud initialization failed.');
         setStatus('error');
       }
     },
-    [setState, user]
+    [installCloudSubscription, setState, user]
   );
 
   const retrySync = useCallback(async () => {
@@ -244,35 +283,23 @@ export function useCloudAccount({ state, setState }: UseCloudAccountOptions) {
         applyingCloud.current = true;
         lastSavedJSON.current = JSON.stringify(cloudState);
         lastCloudState.current = cloudState;
+        stateRef.current = cloudState;
         setState(cloudState);
         applyingCloud.current = false;
         cloudReady.current = true;
         setStatus(navigator.onLine ? 'synced' : 'offline');
         setLastSyncedAt(new Date().toISOString());
 
-        unsubscribeCloud.current?.();
-        unsubscribeCloud.current = subscribeToCloudState(
-          user.uid,
-          (nextState) => {
-            const serialized = JSON.stringify(nextState);
-            if (serialized === lastSavedJSON.current) return;
-            applyingCloud.current = true;
-            lastSavedJSON.current = serialized;
-            lastCloudState.current = nextState;
-            setState(nextState);
-            applyingCloud.current = false;
-            setStatus(navigator.onLine ? 'synced' : 'offline');
-            setLastSyncedAt(new Date().toISOString());
-          },
-          (syncError) => {
-            setError(syncError.message);
-            setStatus(navigator.onLine ? 'error' : 'offline');
-          }
-        );
+        await installCloudSubscription(user.uid);
         return;
       }
 
-      await saveCloudState(user.uid, stateRef.current, lastCloudState.current ?? undefined);
+      await saveCloudState(
+        user.uid,
+        stateRef.current,
+        lastCloudState.current ?? undefined,
+        clientId.current
+      );
       lastSavedJSON.current = JSON.stringify(stateRef.current);
       lastCloudState.current = stateRef.current;
       setStatus('synced');
@@ -282,7 +309,7 @@ export function useCloudAccount({ state, setState }: UseCloudAccountOptions) {
       setError(reason instanceof Error ? reason.message : 'Cloud save failed.');
       setStatus(navigator.onLine ? 'error' : 'offline');
     }
-  }, [setState, user]);
+  }, [installCloudSubscription, setState, user]);
 
   return {
     configured: isFirebaseConfigured,

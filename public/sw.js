@@ -1,4 +1,4 @@
-const CACHE_NAME = 'training-os-shell-v2';
+const CACHE_NAME = 'training-os-shell-v3';
 const BUILD_ASSETS = /* INJECT_BUILD_ASSETS */ [];
 const APP_SHELL = [
   './',

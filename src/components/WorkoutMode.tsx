@@ -1,18 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Check,
   ChevronLeft,
   ChevronRight,
-  Clock,
   Dumbbell,
   Flame,
   RotateCcw,
   Sparkles,
   Trophy,
   X,
-  Pause,
-  TimerReset,
-  Undo2,
 } from 'lucide-react';
 import {
   AppState,
@@ -28,13 +24,10 @@ import {
 import { calculateE1RM } from '../lib/prCalculator';
 import { getNextWorkoutPosition } from '../lib/workoutFlow';
 import {
-  addRestSeconds,
-  getRestSecondsRemaining,
-  pauseRestTimer,
-  resumeRestTimer,
   startRestTimer,
   type RestTimerState,
 } from '../lib/restTimer';
+import { RestTimerPanel } from './RestTimerPanel';
 
 interface WorkoutModeProps {
   state: AppState;
@@ -73,7 +66,6 @@ export const WorkoutMode: React.FC<WorkoutModeProps> = ({
   const [loggedReps, setLoggedReps] = useState<number>(0);
   const [loggedWeight, setLoggedWeight] = useState<number>(0);
   const [restTimer, setRestTimer] = useState<RestTimerState | null>(null);
-  const [timerNow, setTimerNow] = useState(Date.now());
   const [lastCompleted, setLastCompleted] = useState<{
     exerciseIndex: number;
     setIndex: number;
@@ -132,38 +124,6 @@ export const WorkoutMode: React.FC<WorkoutModeProps> = ({
     else localStorage.removeItem(key);
   }, [activeWorkout?.id, restTimer]);
 
-  useEffect(() => {
-    if (!restTimer || restTimer.pausedRemaining !== undefined) return;
-    const interval = window.setInterval(() => setTimerNow(Date.now()), 250);
-    return () => window.clearInterval(interval);
-  }, [restTimer?.endsAt, restTimer?.pausedRemaining]);
-
-  const timerRemaining = restTimer ? getRestSecondsRemaining(restTimer, timerNow) : 0;
-
-  useEffect(() => {
-    if (!restTimer || timerRemaining !== 0 || restTimer.pausedRemaining !== undefined) return;
-    if (state.preferences.timerSound) {
-      try {
-        const AudioContextClass = window.AudioContext ||
-          (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-        if (AudioContextClass) {
-          const context = new AudioContextClass();
-          const oscillator = context.createOscillator();
-          const gain = context.createGain();
-          oscillator.frequency.value = 880;
-          gain.gain.value = 0.08;
-          oscillator.connect(gain);
-          gain.connect(context.destination);
-          oscillator.start();
-          oscillator.stop(context.currentTime + 0.22);
-        }
-      } catch {
-        // The visible timer remains the reliable fallback.
-      }
-    }
-    if (state.preferences.timerVibration && 'vibrate' in navigator) navigator.vibrate([150, 80, 150]);
-  }, [timerRemaining, restTimer?.endsAt]);
-
   // Sync active set inputs with planned / logged values
   const currentPlannedExercise: PlannedExercise | undefined =
     activeWorkout?.plannedExercises[currentExerciseIndex];
@@ -178,13 +138,21 @@ export const WorkoutMode: React.FC<WorkoutModeProps> = ({
   const currentSetExec: SetExecution | undefined =
     currentExec?.setExecutions[currentSetIndex];
 
-  const previousComparableSet = [...state.workoutExecutions]
-    .reverse()
-    .flatMap((execution) => execution.exerciseExecutions)
-    .find((execution) => execution.exerciseId === currentExerciseDef?.id)
-    ?.setExecutions[currentSetIndex];
-  const pendingSuggestion = state.progressionRecommendations.find(
-    (item) => item.exerciseId === currentExerciseDef?.id && item.status === 'pending'
+  const previousComparableSet = useMemo(
+    () =>
+      [...state.workoutExecutions]
+        .reverse()
+        .flatMap((execution) => execution.exerciseExecutions)
+        .find((execution) => execution.exerciseId === currentExerciseDef?.id)
+        ?.setExecutions[currentSetIndex],
+    [currentExerciseDef?.id, currentSetIndex, state.workoutExecutions]
+  );
+  const pendingSuggestion = useMemo(
+    () =>
+      state.progressionRecommendations.find(
+        (item) => item.exerciseId === currentExerciseDef?.id && item.status === 'pending'
+      ),
+    [currentExerciseDef?.id, state.progressionRecommendations]
   );
 
   useEffect(() => {
@@ -257,7 +225,6 @@ export const WorkoutMode: React.FC<WorkoutModeProps> = ({
         ? 60
         : state.preferences.defaultRestSeconds);
     if (restSeconds > 0) {
-      setTimerNow(Date.now());
       setRestTimer(startRestTimer(restSeconds));
     }
 
@@ -480,93 +447,21 @@ export const WorkoutMode: React.FC<WorkoutModeProps> = ({
           </div>
 
           {restTimer && (
-            <div
-              className={`rounded-2xl border p-3 ${
-                timerRemaining > 0
-                  ? 'border-sky-500/30 bg-sky-500/10'
-                  : 'border-emerald-500/40 bg-emerald-500/10'
-              }`}
-              role="timer"
-              aria-live={timerRemaining === 0 ? 'assertive' : 'off'}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <Clock className="h-5 w-5 text-sky-400" />
-                  <div>
-                    <div className="font-mono text-xl font-black text-zinc-100">
-                      {Math.floor(timerRemaining / 60)}:{String(timerRemaining % 60).padStart(2, '0')}
-                    </div>
-                    <div className="text-[9px] uppercase text-zinc-500">
-                      {timerRemaining ? 'Resting' : 'Ready for the next set'}
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setRestTimer((timer) => timer && (
-                      timer.pausedRemaining === undefined
-                        ? pauseRestTimer(timer)
-                        : resumeRestTimer(timer)
-                    ))}
-                    className="touch-target rounded-xl bg-zinc-950/60 text-zinc-200"
-                    aria-label={restTimer.pausedRemaining === undefined ? 'Pause timer' : 'Resume timer'}
-                  >
-                    {restTimer.pausedRemaining === undefined ? <Pause className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setRestTimer((timer) => timer && addRestSeconds(timer, 30))}
-                    className="touch-target rounded-xl bg-zinc-950/60 font-mono text-xs text-zinc-200"
-                    aria-label="Add 30 seconds"
-                  >
-                    +30
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setRestTimer((timer) => timer && startRestTimer(timer.durationSeconds))}
-                    className="touch-target rounded-xl bg-zinc-950/60 text-zinc-200"
-                    aria-label="Restart timer"
-                  >
-                    <TimerReset className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setRestTimer(null)}
-                    className="touch-target rounded-xl bg-zinc-950/60 text-zinc-400"
-                    aria-label="Skip rest timer"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-              {lastCompleted && (
-                <div className="mt-3 flex items-center gap-1 overflow-x-auto border-t border-zinc-700/50 pt-2">
-                  <span className="mr-1 shrink-0 font-mono text-[9px] uppercase text-zinc-500">Optional RIR</span>
-                  {([0, 1, 2, 3, 4, 5] as RIR[]).map((rir) => {
-                    const selected = exerciseExecutions[lastCompleted.exerciseIndex]
-                      ?.setExecutions[lastCompleted.setIndex]?.rir === rir;
-                    return (
-                      <button
-                        type="button"
-                        key={rir}
-                        onClick={() => setLastRir(rir)}
-                        className={`h-9 min-w-9 rounded-lg border font-mono text-xs font-bold ${
-                          selected
-                            ? 'border-emerald-500 bg-emerald-500 text-zinc-950'
-                            : 'border-zinc-700 bg-zinc-950 text-zinc-300'
-                        }`}
-                      >
-                        {rir}
-                      </button>
-                    );
-                  })}
-                  <button type="button" onClick={undoLastSet} className="ml-auto flex h-9 items-center gap-1 rounded-lg px-2 text-xs text-amber-300">
-                    <Undo2 className="h-3.5 w-3.5" /> Undo
-                  </button>
-                </div>
-              )}
-            </div>
+            <RestTimerPanel
+              timer={restTimer}
+              selectedRir={
+                lastCompleted
+                  ? exerciseExecutions[lastCompleted.exerciseIndex]
+                      ?.setExecutions[lastCompleted.setIndex]?.rir
+                  : undefined
+              }
+              showRir={Boolean(lastCompleted)}
+              soundEnabled={state.preferences.timerSound}
+              vibrationEnabled={state.preferences.timerVibration}
+              onChange={setRestTimer}
+              onSelectRir={setLastRir}
+              onUndo={undoLastSet}
+            />
           )}
 
           {/* Current Exercise Focus Card */}

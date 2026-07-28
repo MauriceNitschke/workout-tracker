@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   X,
   TrendingUp,
@@ -43,7 +43,17 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('ALL');
   const [activeTab, setActiveTab] = useState<'analytics' | 'history' | 'prs'>('analytics');
 
-  const report = getExerciseAnalyticsReport(exerciseId, state, timeFilter);
+  const report = useMemo(
+    () => getExerciseAnalyticsReport(exerciseId, state, timeFilter),
+    [
+      exerciseId,
+      state.exercises,
+      state.scheduledWorkouts,
+      state.weeks,
+      state.workoutExecutions,
+      timeFilter,
+    ]
+  );
 
   if (!report) return null;
 

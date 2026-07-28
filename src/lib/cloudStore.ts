@@ -1,19 +1,6 @@
-import {
-  collection,
-  deleteDoc,
-  doc,
-  getDoc,
-  getDocs,
-  increment,
-  onSnapshot,
-  serverTimestamp,
-  setDoc,
-  writeBatch,
-  type DocumentData,
-  type Unsubscribe,
-} from 'firebase/firestore';
+import type { DocumentData, Unsubscribe } from 'firebase/firestore';
 import { AppState } from '../types';
-import { db } from './firebase';
+import { getFirebaseServices } from './firebase';
 import { migrateAppState, SCHEMA_VERSION } from './storage';
 
 const COLLECTIONS = [
@@ -37,15 +24,16 @@ interface CloudMeta {
   activeWorkoutId: string | null;
   revision?: number;
   preferences?: AppState['preferences'];
+  changedCollections?: CollectionKey[];
+  lastWriterId?: string;
 }
 
-function requireDb() {
-  if (!db) throw new Error('Firebase is not configured.');
-  return db;
-}
-
-function userDoc(uid: string, ...segments: string[]) {
-  return doc(requireDb(), 'users', uid, ...segments);
+function validChangedCollections(value: unknown): CollectionKey[] {
+  if (!Array.isArray(value)) return [...COLLECTIONS];
+  const allowed = new Set<string>(COLLECTIONS);
+  return value.filter(
+    (key): key is CollectionKey => typeof key === 'string' && allowed.has(key)
+  );
 }
 
 /**
@@ -54,9 +42,7 @@ function userDoc(uid: string, ...segments: string[]) {
  * preserving arrays, nulls, and all defined values.
  */
 function withoutUndefined(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(withoutUndefined);
-  }
+  if (Array.isArray(value)) return value.map(withoutUndefined);
   if (value !== null && typeof value === 'object') {
     return Object.fromEntries(
       Object.entries(value)
@@ -67,40 +53,70 @@ function withoutUndefined(value: unknown): unknown {
   return value;
 }
 
-export async function cloudDatasetExists(uid: string): Promise<boolean> {
-  return (await getDoc(userDoc(uid, 'meta', 'state'))).exists();
+function recordsEqual(
+  current: Array<{ id: string }>,
+  previous?: Array<{ id: string }>
+): boolean {
+  if (!previous || current.length !== previous.length) return false;
+  return JSON.stringify(current) === JSON.stringify(previous);
 }
 
-export async function loadCloudState(uid: string): Promise<AppState | null> {
-  const metaSnapshot = await getDoc(userDoc(uid, 'meta', 'state'));
-  if (!metaSnapshot.exists()) return null;
-  const meta = metaSnapshot.data() as CloudMeta;
+export async function cloudDatasetExists(uid: string): Promise<boolean> {
+  const { db, firestoreApi } = await getFirebaseServices();
+  return (
+    await firestoreApi.getDoc(firestoreApi.doc(db, 'users', uid, 'meta', 'state'))
+  ).exists();
+}
 
+async function loadCloudStateWithMeta(
+  uid: string,
+  meta: CloudMeta,
+  baseState?: AppState,
+  requestedCollections: CollectionKey[] = [...COLLECTIONS]
+): Promise<AppState> {
+  const { db, firestoreApi } = await getFirebaseServices();
   const entries = await Promise.all(
-    COLLECTIONS.map(async (key) => {
-      const snapshot = await getDocs(collection(requireDb(), 'users', uid, key));
+    requestedCollections.map(async (key) => {
+      const snapshot = await firestoreApi.getDocs(
+        firestoreApi.collection(db, 'users', uid, key)
+      );
       return [key, snapshot.docs.map((item) => item.data().data ?? item.data())] as const;
     })
   );
 
-  const records = Object.fromEntries(entries) as Record<CollectionKey, DocumentData[]>;
+  const records = Object.fromEntries(entries) as Partial<
+    Record<CollectionKey, DocumentData[]>
+  >;
+  const valueFor = <K extends CollectionKey>(key: K): AppState[K] =>
+    (records[key] as AppState[K] | undefined) ??
+    baseState?.[key] ??
+    ([] as unknown as AppState[K]);
+
   return migrateAppState({
-    programs: records.programs as AppState['programs'],
+    ...(baseState ?? {}),
+    programs: valueFor('programs'),
     activeProgramId: meta.activeProgramId,
-    exercises: records.exercises as AppState['exercises'],
-    workoutTemplates: records.workoutTemplates as AppState['workoutTemplates'],
-    weeks: records.weeks as AppState['weeks'],
-    scheduledWorkouts: records.scheduledWorkouts as AppState['scheduledWorkouts'],
-    workoutExecutions: records.workoutExecutions as AppState['workoutExecutions'],
-    weeklySchedulePatterns:
-      records.weeklySchedulePatterns as AppState['weeklySchedulePatterns'],
-    progressionRecommendations:
-      records.progressionRecommendations as AppState['progressionRecommendations'],
-    preferences: meta.preferences,
-    enduranceActivities: records.enduranceActivities as AppState['enduranceActivities'],
-    recoveryActivities: records.recoveryActivities as AppState['recoveryActivities'],
+    exercises: valueFor('exercises'),
+    workoutTemplates: valueFor('workoutTemplates'),
+    weeks: valueFor('weeks'),
+    scheduledWorkouts: valueFor('scheduledWorkouts'),
+    workoutExecutions: valueFor('workoutExecutions'),
+    weeklySchedulePatterns: valueFor('weeklySchedulePatterns'),
+    progressionRecommendations: valueFor('progressionRecommendations'),
+    preferences: meta.preferences ?? baseState?.preferences,
+    enduranceActivities: valueFor('enduranceActivities'),
+    recoveryActivities: valueFor('recoveryActivities'),
     activeWorkoutId: meta.activeWorkoutId ?? null,
   } as AppState);
+}
+
+export async function loadCloudState(uid: string): Promise<AppState | null> {
+  const { db, firestoreApi } = await getFirebaseServices();
+  const metaSnapshot = await firestoreApi.getDoc(
+    firestoreApi.doc(db, 'users', uid, 'meta', 'state')
+  );
+  if (!metaSnapshot.exists()) return null;
+  return loadCloudStateWithMeta(uid, metaSnapshot.data() as CloudMeta);
 }
 
 async function synchronizeCollection(
@@ -109,32 +125,32 @@ async function synchronizeCollection(
   records: Array<{ id: string }>,
   previousRecords?: Array<{ id: string }>
 ): Promise<void> {
-  const database = requireDb();
-  const reference = collection(database, 'users', uid, key);
+  const { db, firestoreApi } = await getFirebaseServices();
+  const reference = firestoreApi.collection(db, 'users', uid, key);
   const incomingIds = new Set(records.map((record) => record.id));
   const previousById = new Map((previousRecords ?? []).map((record) => [record.id, record]));
-  const operations: Array<(batch: ReturnType<typeof writeBatch>) => void> = [];
+  const operations: Array<(batch: ReturnType<typeof firestoreApi.writeBatch>) => void> = [];
 
   for (const record of records) {
     const previous = previousById.get(record.id);
     if (previous && JSON.stringify(previous) === JSON.stringify(record)) continue;
     operations.push((batch) =>
-      batch.set(doc(reference, record.id), {
+      batch.set(firestoreApi.doc(reference, record.id), {
         data: withoutUndefined(record),
         schemaVersion: SCHEMA_VERSION,
-        updatedAt: serverTimestamp(),
+        updatedAt: firestoreApi.serverTimestamp(),
       })
     );
   }
 
   for (const previous of previousRecords ?? []) {
     if (!incomingIds.has(previous.id)) {
-      operations.push((batch) => batch.delete(doc(reference, previous.id)));
+      operations.push((batch) => batch.delete(firestoreApi.doc(reference, previous.id)));
     }
   }
 
   for (let index = 0; index < operations.length; index += 400) {
-    const batch = writeBatch(database);
+    const batch = firestoreApi.writeBatch(db);
     operations.slice(index, index + 400).forEach((operation) => operation(batch));
     await batch.commit();
   }
@@ -143,10 +159,19 @@ async function synchronizeCollection(
 export async function saveCloudState(
   uid: string,
   state: AppState,
-  previousState?: AppState
+  previousState?: AppState,
+  clientId = ''
 ): Promise<void> {
+  const changedCollections = COLLECTIONS.filter(
+    (key) =>
+      !recordsEqual(
+        state[key] as Array<{ id: string }>,
+        previousState?.[key] as Array<{ id: string }> | undefined
+      )
+  );
+
   await Promise.all(
-    COLLECTIONS.map((key) =>
+    changedCollections.map((key) =>
       synchronizeCollection(
         uid,
         key,
@@ -156,35 +181,65 @@ export async function saveCloudState(
     )
   );
 
-  const metaReference = userDoc(uid, 'meta', 'state');
-  const previous = await getDoc(metaReference);
-  await setDoc(metaReference, {
+  const { db, firestoreApi } = await getFirebaseServices();
+  const metaReference = firestoreApi.doc(db, 'users', uid, 'meta', 'state');
+  const metadata: Record<string, unknown> = {
     schemaVersion: SCHEMA_VERSION,
     activeProgramId: state.activeProgramId,
     activeWorkoutId: state.activeWorkoutId,
     preferences: withoutUndefined(state.preferences),
-    revision: increment(1),
-    updatedAt: serverTimestamp(),
-    initializedAt: previous.data()?.initializedAt ?? serverTimestamp(),
-  });
+    revision: firestoreApi.increment(1),
+    changedCollections,
+    lastWriterId: clientId,
+    updatedAt: firestoreApi.serverTimestamp(),
+  };
+  if (!previousState) metadata.initializedAt = firestoreApi.serverTimestamp();
+  await firestoreApi.setDoc(metaReference, metadata, { merge: true });
 }
 
-export function subscribeToCloudState(
+interface CloudSubscriptionOptions {
+  clientId: string;
+  getCurrentState: () => AppState;
+}
+
+export async function subscribeToCloudState(
   uid: string,
+  options: CloudSubscriptionOptions,
   onState: (state: AppState) => void,
   onError: (error: Error) => void
-): Unsubscribe {
+): Promise<Unsubscribe> {
+  const { db, firestoreApi } = await getFirebaseServices();
   let latestRevision = -1;
-  return onSnapshot(
-    userDoc(uid, 'meta', 'state'),
+
+  return firestoreApi.onSnapshot(
+    firestoreApi.doc(db, 'users', uid, 'meta', 'state'),
     async (snapshot) => {
-      if (!snapshot.exists()) return;
-      const revision = Number(snapshot.data().revision ?? 0);
+      if (!snapshot.exists() || snapshot.metadata.hasPendingWrites) return;
+      const meta = snapshot.data() as CloudMeta;
+      const revision = Number(meta.revision ?? 0);
       if (revision === latestRevision) return;
+
+      // The caller has already loaded or initialized the current dataset before
+      // subscribing. Treat the first snapshot as the baseline.
+      if (latestRevision === -1) {
+        latestRevision = revision;
+        return;
+      }
       latestRevision = revision;
+
+      // Firestore reports committed local writes to this listener too. They are
+      // already represented in React state and must not trigger a cloud reload.
+      if (meta.lastWriterId && meta.lastWriterId === options.clientId) return;
+
       try {
-        const state = await loadCloudState(uid);
-        if (state) onState(state);
+        const changedCollections = validChangedCollections(meta.changedCollections);
+        const state = await loadCloudStateWithMeta(
+          uid,
+          meta,
+          options.getCurrentState(),
+          changedCollections
+        );
+        onState(state);
       } catch (error) {
         onError(error instanceof Error ? error : new Error('Unable to load cloud data.'));
       }
@@ -194,9 +249,12 @@ export function subscribeToCloudState(
 }
 
 export async function deleteCloudDataset(uid: string): Promise<void> {
+  const { db, firestoreApi } = await getFirebaseServices();
   for (const key of COLLECTIONS) {
-    const snapshot = await getDocs(collection(requireDb(), 'users', uid, key));
-    await Promise.all(snapshot.docs.map((item) => deleteDoc(item.ref)));
+    const snapshot = await firestoreApi.getDocs(
+      firestoreApi.collection(db, 'users', uid, key)
+    );
+    await Promise.all(snapshot.docs.map((item) => firestoreApi.deleteDoc(item.ref)));
   }
-  await deleteDoc(userDoc(uid, 'meta', 'state'));
+  await firestoreApi.deleteDoc(firestoreApi.doc(db, 'users', uid, 'meta', 'state'));
 }

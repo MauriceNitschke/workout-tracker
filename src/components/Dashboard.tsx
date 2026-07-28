@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   Activity,
   ArrowRight,
@@ -15,7 +15,13 @@ import {
   Lock,
   TrendingUp,
 } from 'lucide-react';
-import { AppState, ScheduledWorkout, TrainingWeek } from '../types';
+import {
+  AppState,
+  PersonalRecord,
+  ScheduledWorkout,
+  TrainingWeek,
+  WorkoutExecution,
+} from '../types';
 import {
   calculateConsistencyStats,
   calculateExecutionVolume,
@@ -23,14 +29,12 @@ import {
   calculatePlannedVolume,
 } from '../lib/prCalculator';
 import { getCurrentISOWeekAndYear } from '../lib/weekUtils';
-import {
-  ResponsiveContainer,
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  Tooltip,
-} from 'recharts';
+
+const DashboardVolumeChart = React.lazy(() =>
+  import('./DashboardVolumeChart').then((module) => ({
+    default: module.DashboardVolumeChart,
+  }))
+);
 
 interface DashboardProps {
   state: AppState;
@@ -43,8 +47,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onStartWorkout,
   onNavigateTab,
 }) => {
-  const consistency = calculateConsistencyStats(state);
-  const prs = calculatePersonalRecords(state);
+  const consistency = useMemo(() => calculateConsistencyStats(state), [state]);
+  const prs = useMemo<Record<string, PersonalRecord>>(
+    () => calculatePersonalRecords(state),
+    [state]
+  );
 
   // Current Week (In Progress or current)
   const currentCalendarWeek = getCurrentISOWeekAndYear();
@@ -58,35 +65,47 @@ export const Dashboard: React.FC<DashboardProps> = ({
     state.weeks.find((w) => w.status === 'Ready') ||
     state.weeks[state.weeks.length - 1];
 
-  const currentWorkouts = currentWeek
-    ? state.scheduledWorkouts.filter((sw) => sw.weekId === currentWeek.id)
-    : [];
+  const currentWorkouts = useMemo(
+    () =>
+      currentWeek
+        ? state.scheduledWorkouts.filter((sw) => sw.weekId === currentWeek.id)
+        : [],
+    [currentWeek, state.scheduledWorkouts]
+  );
 
   // Weekly Volume Data for Recharts
-  const weeklyVolumeData = state.weeks
-    .filter((w) => w.status !== 'Planning')
-    .map((w) => {
-      const workoutsInWeek = state.scheduledWorkouts.filter((sw) => sw.weekId === w.id);
-      let totalVolume = 0;
-
-      workoutsInWeek.forEach((sw) => {
-        const exec = state.workoutExecutions.find((e) => e.scheduledWorkoutId === sw.id);
-        if (exec) {
-          totalVolume += calculateExecutionVolume(exec);
-        } else if (sw.status === 'Completed') {
-          totalVolume += calculatePlannedVolume(sw);
-        }
-      });
-
-      return {
-        weekLabel: `W${w.isoWeek}`,
-        volumeKg: totalVolume,
-        status: w.status,
-      };
+  const weeklyVolumeData = useMemo(() => {
+    const executionsByWorkout = new Map<string, WorkoutExecution>(
+      state.workoutExecutions.map(
+        (execution) => [execution.scheduledWorkoutId, execution] as const
+      )
+    );
+    const workoutsByWeek = new Map<string, ScheduledWorkout[]>();
+    state.scheduledWorkouts.forEach((workout) => {
+      const workouts = workoutsByWeek.get(workout.weekId) ?? [];
+      workouts.push(workout);
+      workoutsByWeek.set(workout.weekId, workouts);
     });
 
+    return state.weeks
+      .filter((week) => week.status !== 'Planning')
+      .map((week) => {
+        const volumeKg = (workoutsByWeek.get(week.id) ?? []).reduce((total, workout) => {
+          const execution = executionsByWorkout.get(workout.id);
+          if (execution) return total + calculateExecutionVolume(execution);
+          if (workout.status === 'Completed') return total + calculatePlannedVolume(workout);
+          return total;
+        }, 0);
+        return {
+          weekLabel: `W${week.isoWeek}`,
+          volumeKg,
+          status: week.status,
+        };
+      });
+  }, [state.scheduledWorkouts, state.weeks, state.workoutExecutions]);
+
   // Recent PRs list
-  const prEntries = Object.values(prs);
+  const prEntries = Object.values(prs) as PersonalRecord[];
 
   return (
     <div className="space-y-5 pb-8 sm:space-y-8 sm:pb-12">
@@ -362,41 +381,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
 
             <div className="h-44 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={weeklyVolumeData}>
-                  <defs>
-                    <linearGradient id="volumeGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
-                      <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis
-                    dataKey="weekLabel"
-                    stroke="#52525b"
-                    fontSize={10}
-                    tickLine={false}
-                  />
-                  <YAxis stroke="#52525b" fontSize={10} tickLine={false} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#18181b',
-                      borderColor: '#27272a',
-                      fontSize: '12px',
-                      color: '#f4f4f5',
-                      borderRadius: '8px',
-                    }}
-                    formatter={(value: number) => [`${value} kg`, 'Total Volume']}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="volumeKg"
-                    stroke="#10b981"
-                    strokeWidth={2}
-                    fillOpacity={1}
-                    fill="url(#volumeGrad)"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
+              <React.Suspense
+                fallback={<div className="h-full animate-pulse rounded-lg bg-zinc-950" />}
+              >
+                <DashboardVolumeChart data={weeklyVolumeData} />
+              </React.Suspense>
             </div>
             <p className="text-[11px] text-zinc-500 font-mono text-center">
               Total tonnage lifted per training week (Sets x Reps x Weight)

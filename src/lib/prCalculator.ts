@@ -27,6 +27,7 @@ export function calculatePersonalRecords(state: AppState): Record<string, Person
   // Build workout lookup
   const workoutMap = new Map<string, ScheduledWorkout>();
   state.scheduledWorkouts.forEach((sw) => workoutMap.set(sw.id, sw));
+  const exerciseMap = new Map(state.exercises.map((exercise) => [exercise.id, exercise]));
 
   state.workoutExecutions.forEach((exec) => {
     const sw = workoutMap.get(exec.scheduledWorkoutId);
@@ -34,7 +35,7 @@ export function calculatePersonalRecords(state: AppState): Record<string, Person
     const date = exec.completedAt ? exec.completedAt.slice(0, 10) : 'Recorded';
 
     exec.exerciseExecutions.forEach((ee) => {
-      const exercise = state.exercises.find((e) => e.id === ee.exerciseId);
+      const exercise = exerciseMap.get(ee.exerciseId);
       if (!exercise) return;
 
       const metric = exercise.prMetric || 'highest_weight';
