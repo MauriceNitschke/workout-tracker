@@ -25,6 +25,7 @@ import {
 } from '../types';
 import { ExerciseDetailModal } from './ExerciseDetailModal';
 import { notify } from '../lib/notifications';
+import { getExerciseDeviationSummary } from '../lib/adaptiveWorkout';
 
 interface ExerciseLibraryProps {
   state: AppState;
@@ -707,15 +708,29 @@ export const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                     ) : (
                       tpl.plannedExercises.map((pe, idx) => {
                         const ex = state.exercises.find((e) => e.id === pe.exerciseId);
+                        const evidence = getExerciseDeviationSummary(state, pe.exerciseId);
                         return (
                           <div
                             key={idx}
-                            className="p-2.5 rounded-xl bg-zinc-950 border border-zinc-800/80 text-xs font-mono flex items-center justify-between"
+                            className="p-2.5 rounded-xl bg-zinc-950 border border-zinc-800/80 text-xs font-mono"
                           >
-                            <span className="text-zinc-200 font-medium">{ex?.name || 'Exercise'}</span>
-                            <span className="text-emerald-400 font-bold text-[11px]">
-                              {pe.plannedSets.length} sets
-                            </span>
+                            <div className="flex items-center justify-between">
+                              <span className="text-zinc-200 font-medium">{ex?.name || 'Exercise'}</span>
+                              <span className="text-emerald-400 font-bold text-[11px]">
+                                {pe.plannedSets.length} sets
+                              </span>
+                            </div>
+                            {evidence && (
+                              <p className="mt-1 text-[9px] leading-relaxed text-sky-400/80">
+                                Recent: {evidence.latestSummary}
+                                {evidence.averageExtraSets > 0
+                                  ? ` · +${evidence.averageExtraSets} sets on average`
+                                  : ''}
+                                {evidence.replacementCount > 0
+                                  ? ` · replaced ${evidence.replacementCount}×`
+                                  : ''}
+                              </p>
+                            )}
                           </div>
                         );
                       })

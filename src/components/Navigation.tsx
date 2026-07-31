@@ -7,7 +7,6 @@ import {
   Cloud,
   Download,
   Dumbbell,
-  Flame,
   HeartPulse,
   Play,
   RotateCcw,
@@ -45,12 +44,6 @@ const secondaryTabs = [
     label: 'Exercises & Templates',
     desc: 'Library, target muscles and progression',
     icon: Dumbbell,
-  },
-  {
-    id: 'streaks' as const,
-    label: 'Streaks & History',
-    desc: 'Lifetime week map and workout logs',
-    icon: Flame,
   },
   {
     id: 'recovery' as const,

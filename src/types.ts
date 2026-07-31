@@ -13,6 +13,30 @@ export type ProgressionStrategy = 'Linear' | 'Double Progression' | 'Wave Loadin
 export type ExerciseBlockType = 'straight' | 'superset' | 'circuit';
 export type RIR = 0 | 1 | 2 | 3 | 4 | 5;
 export type RecommendationStatus = 'pending' | 'accepted' | 'modified' | 'dismissed';
+export type SetType = 'working' | 'warmup' | 'backoff' | 'drop' | 'failure';
+export type SetOrigin = 'planned' | 'added';
+export type ExerciseExecutionOrigin = 'planned' | 'added' | 'replacement';
+export type SetMeasureMode =
+  | 'weight_reps'
+  | 'reps'
+  | 'duration'
+  | 'distance'
+  | 'distance_duration';
+export type BodyweightMode = 'none' | 'bodyweight';
+export type SkipReason = 'equipment' | 'pain' | 'time' | 'fatigue' | 'other';
+export type WorkoutChangeType =
+  | 'set_added'
+  | 'set_deleted'
+  | 'set_retyped'
+  | 'exercise_added'
+  | 'exercise_replaced'
+  | 'exercise_skipped'
+  | 'exercise_reordered'
+  | 'workout_reopened'
+  | 'date_changed'
+  | 'recommendation_accepted'
+  | 'recommendation_modified'
+  | 'recommendation_dismissed';
 
 export type ExerciseCategory = 'Strength' | 'Bodyweight' | 'Endurance' | 'Flexibility';
 
@@ -73,6 +97,10 @@ export interface Exercise {
   targetRir?: RIR;
   stepLoadingExposures?: number;
   deloadPercent?: number;
+  measureMode?: SetMeasureMode;
+  bodyweightMode?: BodyweightMode;
+  defaultSetCount?: number;
+  favorite?: boolean;
 }
 
 export interface PlannedSet {
@@ -119,6 +147,11 @@ export interface ScheduledWorkout {
   startTime?: string;
   durationMinutes?: number;
   timeZone?: string;
+  reminderOverrides?: {
+    morningEnabled?: boolean;
+    preWorkoutMinutes?: number | null;
+    missedWorkoutEnabled?: boolean;
+  };
 }
 
 export interface SetExecution {
@@ -127,18 +160,33 @@ export interface SetExecution {
   reps: number;
   weight: number;
   duration?: number;
+  distanceKm?: number;
   completed: boolean;
   notes?: string;
   rir?: RIR;
+  setType?: SetType;
+  origin?: SetOrigin;
+  plannedSetNumber?: number;
+  bodyweightKg?: number;
+  totalLoadKg?: number;
 }
 
 export interface ExerciseExecution {
   id: string;
   exerciseId: string;
-  plannedExerciseId: string;
+  plannedExerciseId?: string;
   completedSets: number;
   notes?: string;
   setExecutions: SetExecution[];
+  origin?: ExerciseExecutionOrigin;
+  replacesPlannedExerciseId?: string;
+  replacementReason?: SkipReason;
+  skipped?: boolean;
+  skipReason?: SkipReason;
+  skipNote?: string;
+  order?: number;
+  blockId?: string;
+  blockType?: ExerciseBlockType;
 }
 
 export interface WorkoutExecution {
@@ -150,6 +198,78 @@ export interface WorkoutExecution {
   feeling?: WorkoutFeeling;
   completionPercentage: number;
   exerciseExecutions: ExerciseExecution[];
+  planSnapshot?: PlannedExercise[];
+  firstCompletedAt?: string;
+  reopenedCount?: number;
+  plannedWorkingSets?: number;
+  completedPlannedWorkingSets?: number;
+  extraWorkingSets?: number;
+  plannedVolumeKg?: number;
+  actualVolumeKg?: number;
+  bodyweightKg?: number;
+}
+
+export interface WorkoutDraft {
+  id: string;
+  scheduledWorkoutId: string;
+  startedAt: string;
+  updatedAt: string;
+  currentExerciseIndex: number;
+  currentSetIndex: number;
+  notes?: string;
+  feeling?: WorkoutFeeling;
+  exerciseExecutions: ExerciseExecution[];
+  planSnapshot: PlannedExercise[];
+  bodyweightKg?: number;
+  firstCompletedAt?: string;
+  reopenedCount: number;
+  lastWriterId?: string;
+}
+
+export interface WorkoutChangeEvent {
+  id: string;
+  scheduledWorkoutId: string;
+  workoutDraftId?: string;
+  workoutExecutionId?: string;
+  type: WorkoutChangeType;
+  createdAt: string;
+  exerciseExecutionId?: string;
+  setExecutionId?: string;
+  metadata?: Record<string, string | number | boolean | null>;
+}
+
+export interface BodyweightEntry {
+  id: string;
+  date: string;
+  isoWeek: number;
+  year: number;
+  weightKg: number;
+  createdAt: string;
+  updatedAt: string;
+  source: 'manual' | 'weekly-prompt' | 'migration';
+}
+
+export interface ActiveEditorLease {
+  id: string;
+  scheduledWorkoutId: string;
+  deviceId: string;
+  acquiredAt: string;
+  expiresAt: string;
+}
+
+export interface PushSubscriptionRecord {
+  id: string;
+  endpoint: string;
+  expirationTime: number | null;
+  keys: {
+    p256dh: string;
+    auth: string;
+  };
+  fcmToken?: string;
+  deviceLabel: string;
+  timeZone: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface TrainingWeek {
@@ -240,6 +360,16 @@ export interface AppPreferences {
   defaultRestSeconds: number;
   preferredWeightIncrementKg: number;
   muscleWeeklyTargets: Record<string, { min: number; max: number }>;
+  notificationsEnabled: boolean;
+  morningReminderEnabled: boolean;
+  morningReminderTime: string;
+  preWorkoutReminderMinutes: number;
+  quietHoursStart: string;
+  quietHoursEnd: string;
+  weeklyBodyweightReminderEnabled: boolean;
+  weeklyBodyweightReminderDay: number;
+  weeklyBodyweightReminderTime: string;
+  missedWorkoutPromptEnabled: boolean;
 }
 
 export interface PersonalRecord {
@@ -260,6 +390,11 @@ export interface AppState {
   weeks: TrainingWeek[];
   scheduledWorkouts: ScheduledWorkout[];
   workoutExecutions: WorkoutExecution[];
+  workoutDrafts: WorkoutDraft[];
+  workoutChangeEvents: WorkoutChangeEvent[];
+  bodyweightEntries: BodyweightEntry[];
+  activeEditorLeases: ActiveEditorLease[];
+  pushSubscriptions: PushSubscriptionRecord[];
   weeklySchedulePatterns: WeeklySchedulePattern[];
   progressionRecommendations: ProgressionRecommendation[];
   preferences: AppPreferences;

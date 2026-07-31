@@ -8,6 +8,7 @@ import {
   TrainingWeek,
   WorkoutExecution,
 } from '../types';
+import { isPrEligibleSet, volumeForSet } from './adaptiveWorkout';
 
 /**
  * Calculates Estimated 1RM using Epley formula
@@ -42,20 +43,21 @@ export function calculatePersonalRecords(state: AppState): Record<string, Person
       let currentBest = prs[exercise.id];
 
       ee.setExecutions.forEach((se) => {
-        if (!se.completed) return;
+        if (!isPrEligibleSet(se)) return;
 
         let val = 0;
         let formatted = '';
         let e1rm = 0;
+        const systemLoad = se.totalLoadKg ?? se.weight;
 
         if (metric === 'highest_weight') {
           val = se.weight;
-          formatted = `${se.weight} kg (${se.reps} reps)`;
-          e1rm = calculateE1RM(se.weight, se.reps);
+          formatted = `${se.weight} kg added (${se.reps} reps)`;
+          e1rm = calculateE1RM(systemLoad, se.reps);
         } else if (metric === 'estimated_1rm') {
-          e1rm = calculateE1RM(se.weight, se.reps);
+          e1rm = calculateE1RM(systemLoad, se.reps);
           val = e1rm;
-          formatted = `~${e1rm} kg (E1RM: ${se.weight}kg x ${se.reps})`;
+          formatted = `~${e1rm} kg (E1RM: ${systemLoad}kg x ${se.reps})`;
         } else if (metric === 'max_reps') {
           val = se.reps;
           formatted = `${se.reps} reps @ ${se.weight} kg`;
@@ -117,9 +119,7 @@ export function calculateExecutionVolume(execution: WorkoutExecution): number {
   let volume = 0;
   execution.exerciseExecutions.forEach((ee) => {
     ee.setExecutions.forEach((se) => {
-      if (se.completed) {
-        volume += se.weight * se.reps;
-      }
+      volume += volumeForSet(se);
     });
   });
   return volume;

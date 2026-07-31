@@ -4,7 +4,7 @@ import { getCleanSlateState, getInitialSeedState } from '../data/seedData';
 const LEGACY_STORAGE_KEY = 'training_os_app_state_v1';
 const GUEST_STORAGE_KEY = 'training_os_guest_state_v2';
 const GUEST_ARCHIVE_KEY = 'training_os_guest_archive_v2';
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 interface PersistedState {
   schemaVersion: number;
@@ -37,6 +37,37 @@ export function migrateAppState(value: AppState | Record<string, unknown>): AppS
   const state = value as AppState;
   return {
     ...state,
+    exercises: state.exercises.map((exercise) => ({
+      ...exercise,
+      measureMode: exercise.measureMode ??
+        (exercise.category === 'Endurance' ? 'distance_duration' :
+          exercise.prMetric === 'longest_duration' ? 'duration' : 'weight_reps'),
+      bodyweightMode: exercise.bodyweightMode ??
+        (exercise.category === 'Bodyweight' ? 'bodyweight' : 'none'),
+      defaultSetCount: exercise.defaultSetCount ?? 3,
+    })),
+    workoutExecutions: state.workoutExecutions.map((execution) => ({
+      ...execution,
+      firstCompletedAt: execution.firstCompletedAt ?? execution.completedAt,
+      reopenedCount: execution.reopenedCount ?? 0,
+      exerciseExecutions: execution.exerciseExecutions.map((exercise) => ({
+        ...exercise,
+        origin: exercise.origin ?? 'planned',
+        setExecutions: exercise.setExecutions.map((set) => ({
+          ...set,
+          setType: set.setType ?? 'working',
+          origin: set.origin ?? 'planned',
+          plannedSetNumber: set.plannedSetNumber ?? set.setNumber,
+        })),
+      })),
+    })),
+    workoutDrafts: Array.isArray(state.workoutDrafts) ? state.workoutDrafts : [],
+    workoutChangeEvents: Array.isArray(state.workoutChangeEvents)
+      ? state.workoutChangeEvents
+      : [],
+    bodyweightEntries: Array.isArray(state.bodyweightEntries) ? state.bodyweightEntries : [],
+    activeEditorLeases: Array.isArray(state.activeEditorLeases) ? state.activeEditorLeases : [],
+    pushSubscriptions: Array.isArray(state.pushSubscriptions) ? state.pushSubscriptions : [],
     weeklySchedulePatterns: Array.isArray(state.weeklySchedulePatterns)
       ? state.weeklySchedulePatterns
       : [],
@@ -49,6 +80,19 @@ export function migrateAppState(value: AppState | Record<string, unknown>): AppS
       defaultRestSeconds: state.preferences?.defaultRestSeconds ?? 120,
       preferredWeightIncrementKg: state.preferences?.preferredWeightIncrementKg ?? 2.5,
       muscleWeeklyTargets: state.preferences?.muscleWeeklyTargets ?? {},
+      notificationsEnabled: state.preferences?.notificationsEnabled ?? false,
+      morningReminderEnabled: state.preferences?.morningReminderEnabled ?? true,
+      morningReminderTime: state.preferences?.morningReminderTime ?? '09:00',
+      preWorkoutReminderMinutes: state.preferences?.preWorkoutReminderMinutes ?? 60,
+      quietHoursStart: state.preferences?.quietHoursStart ?? '22:00',
+      quietHoursEnd: state.preferences?.quietHoursEnd ?? '07:00',
+      weeklyBodyweightReminderEnabled:
+        state.preferences?.weeklyBodyweightReminderEnabled ?? true,
+      weeklyBodyweightReminderDay: state.preferences?.weeklyBodyweightReminderDay ?? 1,
+      weeklyBodyweightReminderTime:
+        state.preferences?.weeklyBodyweightReminderTime ?? '08:00',
+      missedWorkoutPromptEnabled:
+        state.preferences?.missedWorkoutPromptEnabled ?? true,
     },
   };
 }

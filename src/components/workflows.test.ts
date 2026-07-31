@@ -3,6 +3,7 @@ import test from 'node:test';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { getCleanSlateState } from '../data/seedData';
+import { createWorkoutDraft } from '../lib/adaptiveWorkout';
 import { WorkoutMode } from './WorkoutMode';
 
 test('mobile workout logger renders the active set as the primary action', () => {
@@ -21,15 +22,22 @@ test('mobile workout logger renders the active set as the primary action', () =>
       plannedSets: [{ setNumber: 1, plannedReps: 8, plannedWeight: 60 }],
     }],
   };
+  const activeState = { ...state, scheduledWorkouts: [workout], activeWorkoutId: workout.id };
+  const draft = createWorkoutDraft(workout, activeState);
   const markup = renderToStaticMarkup(
     React.createElement(WorkoutMode, {
-      state: { ...state, scheduledWorkouts: [workout], activeWorkoutId: workout.id },
+      state: { ...activeState, workoutDrafts: [draft] },
       scheduledWorkoutId: workout.id,
+      syncStatus: 'guest',
+      onUpdateState: () => undefined,
+      onStartWorkout: () => undefined,
+      onMoveWorkoutToToday: () => undefined,
+      onNavigatePlan: () => undefined,
       onFinishWorkout: () => undefined,
       onCancelWorkout: () => undefined,
     })
   );
   assert.match(markup, /Fast Push/);
-  assert.match(markup, /COMPLETE SET #1/);
+  assert.match(markup, /Complete set 1/i);
   assert.match(markup, /inputMode="numeric"|inputmode="numeric"/);
 });

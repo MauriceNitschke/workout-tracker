@@ -6,11 +6,11 @@ cross-device synchronization.
 
 ## Local development
 
-1. Install dependencies: `bun install`
+1. Install dependencies: `npm install`
 2. Copy `.env.example` to `.env.local`.
-3. Run the app: `bun run dev`
-4. Type-check: `bun run lint`
-5. Build: `bun run build`
+3. Run the app: `npm run dev`
+4. Type-check: `npm run lint`
+5. Build: `npm run build`
 
 Without Firebase variables, all workout features remain available in local guest mode.
 
@@ -45,3 +45,26 @@ isolation and must be deployed before enabling sign-in for users.
   reconnection.
 
 JSON import/export remains available as an independent backup.
+
+## Enable iPhone PWA notifications
+
+1. In Firebase Console, open Project settings → Cloud Messaging → Web Push
+   certificates and create a key pair.
+2. Add the public key as `VITE_FIREBASE_VAPID_KEY` locally and in the GitHub Pages
+   build variables.
+3. Install and verify the scheduled backend:
+
+   ```sh
+   cd functions
+   npm install
+   npm run build
+   cd ..
+   firebase deploy --only functions
+   ```
+
+4. Deploy the updated frontend. On iPhone, install the site to the Home Screen,
+   open Account & Settings, and explicitly enable notifications.
+
+The app stores one private FCM subscription per signed-in device. The scheduled
+function respects quiet hours and sends morning, start-time-relative,
+missed-workout, and weekly bodyweight reminders.

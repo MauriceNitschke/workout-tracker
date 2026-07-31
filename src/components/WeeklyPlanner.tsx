@@ -39,6 +39,7 @@ import {
   applySchedulePreview,
   buildSchedulePreview,
 } from '../lib/scheduling';
+import { getExerciseDeviationSummary } from '../lib/adaptiveWorkout';
 
 interface WeeklyPlannerProps {
   state: AppState;
@@ -1004,19 +1005,19 @@ export const WeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
                     ) : (
                       sw.plannedExercises.map((pe, peIdx) => {
                         const ex = state.exercises.find((e) => e.id === pe.exerciseId);
+                        const evidence = getExerciseDeviationSummary(state, pe.exerciseId);
                         return (
                           <div
                             key={pe.id}
-                            className="flex items-center justify-between p-3 rounded-lg bg-zinc-950 border border-zinc-800/80 text-xs font-mono"
+                            className="p-3 rounded-lg bg-zinc-950 border border-zinc-800/80 text-xs font-mono"
                           >
-                            <div className="flex items-center space-x-3">
-                              <span className="text-zinc-600 font-bold">{peIdx + 1}.</span>
-                              <span className="text-zinc-200 font-semibold">
-                                {ex?.name || 'Exercise'}
-                              </span>
-                            </div>
-
-                            <div className="flex items-center space-x-4 text-zinc-400">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex items-center space-x-3">
+                                <span className="text-zinc-600 font-bold">{peIdx + 1}.</span>
+                                <span className="text-zinc-200 font-semibold">
+                                  {ex?.name || 'Exercise'}
+                                </span>
+                              </div>
                               <span>
                                 {pe.plannedSets.length} sets × {pe.plannedSets[0]?.plannedReps} reps @{' '}
                                 <span className="text-emerald-400 font-bold">
@@ -1024,6 +1025,15 @@ export const WeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
                                 </span>
                               </span>
                             </div>
+                            {evidence && (
+                              <p className="mt-2 border-t border-zinc-900 pt-2 text-[9px] text-sky-400/80">
+                                Last actual: {evidence.latestSummary}
+                                {evidence.averageExtraSets > 0
+                                  ? ` · average +${evidence.averageExtraSets} extra sets`
+                                  : ''}
+                                {evidence.skipCount > 0 ? ` · skipped ${evidence.skipCount}×` : ''}
+                              </p>
+                            )}
                           </div>
                         );
                       })
@@ -1194,7 +1204,7 @@ export const WeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
               </div>
 
               {/* Workout Details (Title, Week, Date, Notes) */}
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs font-mono">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs font-mono">
                 <div className="space-y-1">
                   <label className="text-zinc-400 uppercase font-bold text-[10px]">Workout Title</label>
                   <input
@@ -1248,7 +1258,110 @@ export const WeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-zinc-100 focus:outline-none focus:border-emerald-500"
                   />
                 </div>
+                <div className="space-y-1">
+                  <label className="text-zinc-400 uppercase font-bold text-[10px]">Start time</label>
+                  <input
+                    type="time"
+                    value={editingWorkout.startTime || ''}
+                    onChange={(e) =>
+                      setEditingWorkout({
+                        ...editingWorkout,
+                        startTime: e.target.value || undefined,
+                        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                      })
+                    }
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-zinc-100"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-zinc-400 uppercase font-bold text-[10px]">Duration minutes</label>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min="0"
+                    value={editingWorkout.durationMinutes || ''}
+                    onChange={(e) =>
+                      setEditingWorkout({
+                        ...editingWorkout,
+                        durationMinutes: Math.max(0, Number(e.target.value)) || undefined,
+                      })
+                    }
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-zinc-100"
+                  />
+                </div>
               </div>
+
+              <details className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-xs text-zinc-400">
+                <summary className="min-h-11 cursor-pointer py-3 font-mono font-bold text-zinc-300">
+                  Reminder overrides
+                </summary>
+                <div className="grid gap-3 pt-2 sm:grid-cols-3">
+                  <label>
+                    Morning reminder
+                    <select
+                      value={editingWorkout.reminderOverrides?.morningEnabled === undefined
+                        ? 'default'
+                        : String(editingWorkout.reminderOverrides.morningEnabled)}
+                      onChange={(event) => setEditingWorkout({
+                        ...editingWorkout,
+                        reminderOverrides: {
+                          ...editingWorkout.reminderOverrides,
+                          morningEnabled: event.target.value === 'default'
+                            ? undefined
+                            : event.target.value === 'true',
+                        },
+                      })}
+                      className="mt-1 min-h-11 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2"
+                    >
+                      <option value="default">Use default</option>
+                      <option value="true">On</option>
+                      <option value="false">Off</option>
+                    </select>
+                  </label>
+                  <label>
+                    Minutes before
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min="0"
+                      placeholder={String(state.preferences.preWorkoutReminderMinutes)}
+                      value={editingWorkout.reminderOverrides?.preWorkoutMinutes ?? ''}
+                      onChange={(event) => setEditingWorkout({
+                        ...editingWorkout,
+                        reminderOverrides: {
+                          ...editingWorkout.reminderOverrides,
+                          preWorkoutMinutes: event.target.value === ''
+                            ? undefined
+                            : Math.max(0, Number(event.target.value)),
+                        },
+                      })}
+                      className="mt-1 min-h-11 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2"
+                    />
+                  </label>
+                  <label>
+                    Missed prompt
+                    <select
+                      value={editingWorkout.reminderOverrides?.missedWorkoutEnabled === undefined
+                        ? 'default'
+                        : String(editingWorkout.reminderOverrides.missedWorkoutEnabled)}
+                      onChange={(event) => setEditingWorkout({
+                        ...editingWorkout,
+                        reminderOverrides: {
+                          ...editingWorkout.reminderOverrides,
+                          missedWorkoutEnabled: event.target.value === 'default'
+                            ? undefined
+                            : event.target.value === 'true',
+                        },
+                      })}
+                      className="mt-1 min-h-11 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2"
+                    >
+                      <option value="default">Use default</option>
+                      <option value="true">On</option>
+                      <option value="false">Off</option>
+                    </select>
+                  </label>
+                </div>
+              </details>
 
 
               {/* Planned Exercises Header */}

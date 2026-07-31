@@ -17,6 +17,12 @@ import {
 } from './restTimer';
 import { getNextWorkoutPosition } from './workoutFlow';
 import {
+  createWorkoutDraft,
+  finalizeWorkoutDraft,
+  findTrainCandidate,
+  workoutDraftMetrics,
+} from './adaptiveWorkout';
+import {
   Exercise,
   ExerciseExecution,
   PlannedExercise,
@@ -27,19 +33,106 @@ import {
   WorkoutTemplate,
 } from '../types';
 
-test('schema migration preserves IDs and adds v3 collections and preferences', () => {
+test('schema migration preserves IDs and adds v4 adaptive collections and preferences', () => {
   const state = getCleanSlateState();
   const legacy = {
     ...state,
     weeklySchedulePatterns: undefined,
     progressionRecommendations: undefined,
+    workoutDrafts: undefined,
+    workoutChangeEvents: undefined,
+    bodyweightEntries: undefined,
+    activeEditorLeases: undefined,
+    pushSubscriptions: undefined,
     preferences: undefined,
   };
   const migrated = migrateAppState(legacy as never);
   assert.equal(migrated.exercises[0]?.id, state.exercises[0]?.id);
   assert.deepEqual(migrated.weeklySchedulePatterns, []);
   assert.deepEqual(migrated.progressionRecommendations, []);
+  assert.deepEqual(migrated.workoutDrafts, []);
+  assert.deepEqual(migrated.bodyweightEntries, []);
+  assert.deepEqual(migrated.activeEditorLeases, []);
   assert.equal(migrated.preferences.defaultRestSeconds, 120);
+});
+
+test('adaptive metrics cap adherence and report extra work separately', () => {
+  const state = getCleanSlateState();
+  const exercise = state.exercises[0];
+  const workout: ScheduledWorkout = {
+    id: 'adaptive-workout',
+    weekId: 'week',
+    title: 'Adaptive',
+    workoutNumber: 1,
+    status: 'Started',
+    plannedExercises: [{
+      id: 'planned',
+      exerciseId: exercise.id,
+      order: 1,
+      plannedSets: [{ setNumber: 1, plannedReps: 8, plannedWeight: 50 }],
+    }],
+  };
+  const draft = createWorkoutDraft(workout, state);
+  draft.exerciseExecutions[0].setExecutions[0].completed = true;
+  draft.exerciseExecutions[0].setExecutions.push({
+    id: 'extra',
+    setNumber: 2,
+    reps: 8,
+    weight: 50,
+    completed: true,
+    setType: 'working',
+    origin: 'added',
+  });
+  draft.exerciseExecutions[0].setExecutions.push({
+    id: 'warmup',
+    setNumber: 3,
+    reps: 10,
+    weight: 20,
+    completed: true,
+    setType: 'warmup',
+    origin: 'added',
+  });
+  const metrics = workoutDraftMetrics(draft, state.exercises);
+  assert.equal(metrics.completionPercentage, 100);
+  assert.equal(metrics.completedPlannedWorkingSets, 1);
+  assert.equal(metrics.extraWorkingSets, 1);
+  assert.equal(metrics.actualVolumeKg, 800);
+  assert.equal(finalizeWorkoutDraft(draft, state.exercises).exerciseExecutions.length, 1);
+});
+
+test('Train routing never moves a workout from next week', () => {
+  const state = getCleanSlateState();
+  const currentWeek: TrainingWeek = {
+    id: 'current',
+    isoWeek: 31,
+    year: 2026,
+    status: 'In Progress',
+    programId: state.activeProgramId,
+    startDate: '2026-07-27',
+  };
+  const nextWeek: TrainingWeek = {
+    id: 'next',
+    isoWeek: 32,
+    year: 2026,
+    status: 'Planning',
+    programId: state.activeProgramId,
+    startDate: '2026-08-03',
+  };
+  const future: ScheduledWorkout = {
+    id: 'future',
+    weekId: nextWeek.id,
+    title: 'Next week',
+    workoutNumber: 1,
+    status: 'Planned',
+    date: '2026-08-03',
+    plannedExercises: [],
+  };
+  const candidate = findTrainCandidate(
+    { ...state, weeks: [currentWeek, nextWeek], scheduledWorkouts: [future] },
+    '2026-07-30'
+  );
+  assert.equal(candidate.kind, 'plan');
+  assert.equal(candidate.workout, undefined);
 });
 
 test('ISO week generation crosses the year boundary correctly', () => {

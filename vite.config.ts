@@ -13,15 +13,19 @@ function injectServiceWorkerAssets() {
       const serviceWorkerPath = path.join(distDirectory, 'sw.js');
       if (!fs.existsSync(serviceWorkerPath)) return;
 
-      const collectFiles = (directory: string): string[] =>
-        fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-          const absolute = path.join(directory, entry.name);
-          return entry.isDirectory() ? collectFiles(absolute) : [absolute];
-        });
-
-      const assets = collectFiles(distDirectory)
-        .filter((file) => file !== serviceWorkerPath)
-        .map((file) => `./${path.relative(distDirectory, file).split(path.sep).join('/')}`);
+      // Precache only the initial application shell. Lazy routes, charts,
+      // Firebase, and messaging chunks are cached when first used. Precaching
+      // every generated chunk made iPhone installation and updates download
+      // megabytes before the app could become ready.
+      const indexHtml = fs.readFileSync(path.join(distDirectory, 'index.html'), 'utf8');
+      const assets = Array.from(
+        new Set(
+          [...indexHtml.matchAll(/(?:src|href)="([^"]+)"/g)]
+            .map((match) => match[1])
+            .filter((asset) => asset.startsWith('./assets/') || asset.startsWith('/assets/'))
+            .map((asset) => asset.startsWith('/') ? `.${asset}` : asset)
+        )
+      );
       const source = fs.readFileSync(serviceWorkerPath, 'utf8');
       fs.writeFileSync(
         serviceWorkerPath,

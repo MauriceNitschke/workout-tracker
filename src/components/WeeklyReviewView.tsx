@@ -44,6 +44,11 @@ import {
 } from 'recharts';
 import { ExerciseDetailModal } from './ExerciseDetailModal';
 import { applyRecommendation } from '../lib/progression';
+import { isWorkingSet } from '../lib/adaptiveWorkout';
+
+const LazyHistory = React.lazy(() =>
+  import('./LifeInWeeksView').then((module) => ({ default: module.LifeInWeeksView }))
+);
 
 interface WeeklyReviewViewProps {
   state: AppState;
@@ -51,7 +56,9 @@ interface WeeklyReviewViewProps {
 }
 
 export const WeeklyReviewView: React.FC<WeeklyReviewViewProps> = ({ state, onUpdateState }) => {
-  const [activeSection, setActiveSection] = useState<'review' | 'muscle-volume' | 'strength-progress'>('review');
+  const [activeSection, setActiveSection] = useState<
+    'review' | 'muscle-volume' | 'strength-progress' | 'history'
+  >('review');
 
   // Selected week for review
   const [selectedWeekId, setSelectedWeekId] = useState<string>(
@@ -118,7 +125,7 @@ export const WeeklyReviewView: React.FC<WeeklyReviewViewProps> = ({ state, onUpd
 
   const volumeCompletionPct =
     totalPlannedVolume > 0
-      ? Math.round((totalExecutedVolume / totalPlannedVolume) * 100)
+      ? Math.min(100, Math.round((totalExecutedVolume / totalPlannedVolume) * 100))
       : 100;
 
   // Muscle volume analytics calculation
@@ -141,6 +148,7 @@ export const WeeklyReviewView: React.FC<WeeklyReviewViewProps> = ({ state, onUpd
     recentVolume,
     plannedSets,
     completedSets,
+    extraSets,
   } = useMemo(() => {
     const recentWeeks = [...state.weeks]
       .sort((a, b) => a.year - b.year || a.isoWeek - b.isoWeek)
@@ -174,7 +182,21 @@ export const WeeklyReviewView: React.FC<WeeklyReviewViewProps> = ({ state, onUpd
           sum +
           execution.exerciseExecutions.reduce(
             (exerciseSum, exercise) =>
-              exerciseSum + exercise.setExecutions.filter((set) => set.completed).length,
+              exerciseSum + exercise.setExecutions.filter(
+                (set) => isWorkingSet(set) && (set.origin ?? 'planned') === 'planned'
+              ).length,
+            0
+          ),
+        0
+      ),
+      extraSets: executions.reduce(
+        (sum, execution) =>
+          sum +
+          execution.exerciseExecutions.reduce(
+            (exerciseSum, exercise) =>
+              exerciseSum + exercise.setExecutions.filter(
+                (set) => isWorkingSet(set) && set.origin === 'added'
+              ).length,
             0
           ),
         0
@@ -261,6 +283,17 @@ export const WeeklyReviewView: React.FC<WeeklyReviewViewProps> = ({ state, onUpd
             <TrendingUp className="w-4 h-4 text-sky-400" />
             <span>Strength Progress</span>
           </button>
+          <button
+            onClick={() => setActiveSection('history')}
+            className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl text-xs font-mono font-bold transition shrink-0 ${
+              activeSection === 'history'
+                ? 'bg-zinc-800 text-zinc-100 border border-zinc-700 shadow-sm'
+                : 'bg-zinc-950 text-zinc-400 border border-zinc-800 hover:border-zinc-700'
+            }`}
+          >
+            <Calendar className="w-4 h-4 text-amber-400" />
+            <span>History & Streaks</span>
+          </button>
         </div>
       </div>
 
@@ -277,9 +310,11 @@ export const WeeklyReviewView: React.FC<WeeklyReviewViewProps> = ({ state, onUpd
               detail: 'planned sessions',
             },
             {
-              label: 'Sets completed',
+              label: 'Plan completion',
               value: `${completedSets}/${plannedSets}`,
-              detail: plannedSets ? `${Math.round(completedSets / plannedSets * 100)}% adherence` : 'No plan yet',
+              detail: plannedSets
+                ? `${Math.min(100, Math.round(completedSets / plannedSets * 100))}% · +${extraSets} extra sets`
+                : 'No plan yet',
             },
             {
               label: '4-week volume',
@@ -352,6 +387,17 @@ export const WeeklyReviewView: React.FC<WeeklyReviewViewProps> = ({ state, onUpd
                               ? { ...item, status: 'dismissed', decidedAt: new Date().toISOString() }
                               : item
                           ),
+                          workoutChangeEvents: [
+                            ...state.workoutChangeEvents,
+                            {
+                              id: `change-${Date.now()}-${recommendation.id}`,
+                              scheduledWorkoutId: recommendation.sourceScheduledWorkoutId,
+                              workoutExecutionId: recommendation.sourceWorkoutExecutionId,
+                              type: 'recommendation_dismissed',
+                              createdAt: new Date().toISOString(),
+                              metadata: { recommendationId: recommendation.id },
+                            },
+                          ],
                         })}
                         className="rounded-lg border border-zinc-700 px-3 py-2 text-xs text-zinc-400"
                       >
@@ -430,7 +476,7 @@ export const WeeklyReviewView: React.FC<WeeklyReviewViewProps> = ({ state, onUpd
                 {totalExecutedVolume.toLocaleString()} <span className="text-xs font-normal text-zinc-500">kg</span>
               </div>
               <p className="text-xs text-zinc-500 font-mono mt-1">
-                {volumeCompletionPct}% volume realized
+                {volumeCompletionPct}% planned volume · excess workload is separate
               </p>
             </div>
           </div>
@@ -443,6 +489,21 @@ export const WeeklyReviewView: React.FC<WeeklyReviewViewProps> = ({ state, onUpd
 
             {workoutsInWeek.map((sw) => {
               const exec = state.workoutExecutions.find((e) => e.scheduledWorkoutId === sw.id);
+              const completedPlanned = exec?.completedPlannedWorkingSets ??
+                exec?.exerciseExecutions.reduce((sum, exercise) =>
+                  sum + exercise.setExecutions.filter(
+                    (set) => isWorkingSet(set) && (set.origin ?? 'planned') === 'planned'
+                  ).length, 0) ?? 0;
+              const planned = exec?.plannedWorkingSets ??
+                sw.plannedExercises.reduce((sum, exercise) => sum + exercise.plannedSets.length, 0);
+              const extras = exec?.extraWorkingSets ??
+                exec?.exerciseExecutions.reduce((sum, exercise) =>
+                  sum + exercise.setExecutions.filter(
+                    (set) => isWorkingSet(set) && set.origin === 'added'
+                  ).length, 0) ?? 0;
+              const addedExercises = exec?.exerciseExecutions.filter(
+                (exercise) => exercise.origin === 'added' || exercise.origin === 'replacement'
+              ) ?? [];
 
               return (
                 <div
@@ -468,6 +529,20 @@ export const WeeklyReviewView: React.FC<WeeklyReviewViewProps> = ({ state, onUpd
                       </span>
                     )}
                   </div>
+
+                  {exec && (
+                    <div className="flex flex-wrap gap-2 text-[10px] font-mono">
+                      <span className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-2 py-1 text-emerald-300">
+                        {planned ? Math.min(100, Math.round(completedPlanned / planned * 100)) : 100}% plan completion
+                      </span>
+                      <span className="rounded-lg border border-sky-500/25 bg-sky-500/10 px-2 py-1 text-sky-300">
+                        +{extras} extra working sets
+                      </span>
+                      <span className="rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-zinc-400">
+                        {Math.round(exec.actualVolumeKg ?? calculateExecutionVolume(exec)).toLocaleString()} kg performed
+                      </span>
+                    </div>
+                  )}
 
                   {/* Side-by-side comparison table */}
                   <div className="space-y-2">
@@ -513,7 +588,8 @@ export const WeeklyReviewView: React.FC<WeeklyReviewViewProps> = ({ state, onUpd
                                         : 'bg-rose-500/10 border-rose-500/30 text-rose-400'
                                     }`}
                                   >
-                                    Set {se.setNumber}: {se.reps} reps @ {se.weight}kg
+                                    {se.setType === 'warmup' ? 'Warm-up' : `Set ${se.setNumber}`}
+                                    {se.origin === 'added' ? ' · added' : ''}: {se.reps} reps @ {se.weight}kg
                                     {se.rir !== undefined ? ` · ${se.rir} RIR` : ''}
                                   </span>
                                 ))}
@@ -521,6 +597,33 @@ export const WeeklyReviewView: React.FC<WeeklyReviewViewProps> = ({ state, onUpd
                             ) : (
                               <span className="text-zinc-600 font-mono italic">Not executed yet</span>
                             )}
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {addedExercises.map((execution) => {
+                      const exercise = state.exercises.find((item) => item.id === execution.exerciseId);
+                      return (
+                        <div
+                          key={execution.id}
+                          className="grid grid-cols-1 gap-3 rounded-xl border border-sky-500/20 bg-sky-500/5 p-3.5 text-xs font-mono md:grid-cols-2"
+                        >
+                          <div>
+                            <span className="mb-1 block font-bold uppercase text-sky-300">
+                              {execution.origin === 'replacement' ? 'Replacement' : 'Added'}: {exercise?.name ?? 'Exercise'}
+                            </span>
+                            <span className="text-zinc-500">
+                              Not part of the original plan
+                              {execution.replacementReason ? ` · ${execution.replacementReason}` : ''}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {execution.setExecutions.filter((set) => set.completed).map((set) => (
+                              <span key={set.id} className="rounded-lg border border-sky-500/30 bg-zinc-950 px-2 py-0.5 text-sky-200">
+                                {set.setType ?? 'working'} · {set.reps} @ {set.weight}kg
+                              </span>
+                            ))}
                           </div>
                         </div>
                       );
@@ -549,7 +652,9 @@ export const WeeklyReviewView: React.FC<WeeklyReviewViewProps> = ({ state, onUpd
               <span>Direct Muscle Group Volume (Weekly & Monthly Sets)</span>
             </h2>
             <p className="text-xs text-zinc-400 leading-relaxed">
-              Calculates direct sets completed per muscle group. Compare current week targets against previous week, 4-week averages, and monthly set distribution.
+              Effective sets use 1.0 for a primary muscle and 0.5 for a secondary muscle.
+              Warm-ups are visible in history but excluded here. Completion is capped at 100%;
+              extra work remains visible as workload rather than inflating adherence.
             </p>
           </div>
 
@@ -903,6 +1008,12 @@ export const WeeklyReviewView: React.FC<WeeklyReviewViewProps> = ({ state, onUpd
             </div>
           )}
         </div>
+      )}
+
+      {activeSection === 'history' && (
+        <React.Suspense fallback={<div className="p-6 text-center text-sm text-zinc-500">Loading history…</div>}>
+          <LazyHistory state={state} onUpdateState={onUpdateState} />
+        </React.Suspense>
       )}
 
       {/* Exercise Detail Modal Triggered from anywhere */}

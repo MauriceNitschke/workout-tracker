@@ -8,6 +8,12 @@ import {
   ScheduledWorkout,
   WorkoutExecution,
 } from '../types';
+import { isWorkingSet } from './adaptiveWorkout';
+
+const isComparablePlannedSet = (set: ExerciseExecution['setExecutions'][number]) =>
+  set.completed &&
+  (set.setType ?? 'working') === 'working' &&
+  (set.origin ?? 'planned') === 'planned';
 
 const roundToIncrement = (value: number, increment: number) =>
   Math.round(value / increment) * increment;
@@ -22,7 +28,7 @@ function targetFromPlan(plan: PlannedExercise): ProgressionTarget {
 }
 
 function failedExposure(execution: ExerciseExecution, plan: PlannedExercise): boolean {
-  const completed = execution.setExecutions.filter((set) => set.completed);
+  const completed = execution.setExecutions.filter(isComparablePlannedSet);
   return completed.length < plan.plannedSets.length ||
     completed.some((set, index) => set.reps < (plan.plannedSets[index]?.plannedReps ?? 0));
 }
@@ -35,7 +41,7 @@ export function buildProgressionRecommendation(
   workout: ScheduledWorkout,
   state: AppState
 ): ProgressionRecommendation | null {
-  const completed = execution.setExecutions.filter((set) => set.completed);
+  const completed = execution.setExecutions.filter(isComparablePlannedSet);
   if (!plan.plannedSets.length || !completed.length) return null;
 
   const current = targetFromPlan(plan);
@@ -73,7 +79,10 @@ export function buildProgressionRecommendation(
         .filter((item) => item.completedAt && item.id !== workoutExecution.id)
         .slice(-Math.max(0, required - 1))
         .filter((item) => item.exerciseExecutions.some(
-          (entry) => entry.exerciseId === exercise.id && entry.setExecutions.every((set) => set.completed)
+          (entry) => entry.exerciseId === exercise.id &&
+            entry.setExecutions.filter((set) => (set.origin ?? 'planned') === 'planned')
+              .filter(isWorkingSet)
+              .every((set) => (set.setType ?? 'working') === 'working')
         )).length + 1;
       if (successful >= required) {
         suggested.weight = roundToIncrement(current.weight + increment, increment);
@@ -191,5 +200,21 @@ export function applyRecommendation(
           }
         : item
     ),
+    workoutChangeEvents: [
+      ...state.workoutChangeEvents,
+      {
+        id: `change-${Date.now()}-${recommendationId}`,
+        scheduledWorkoutId: recommendation.sourceScheduledWorkoutId,
+        workoutExecutionId: recommendation.sourceWorkoutExecutionId,
+        type: target ? 'recommendation_modified' : 'recommendation_accepted',
+        createdAt: decidedAt,
+        metadata: {
+          recommendationId,
+          sets: next.sets,
+          reps: next.reps,
+          weight: next.weight,
+        },
+      },
+    ],
   };
 }

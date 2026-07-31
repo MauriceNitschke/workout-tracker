@@ -10,6 +10,11 @@ const COLLECTIONS = [
   'weeks',
   'scheduledWorkouts',
   'workoutExecutions',
+  'workoutDrafts',
+  'workoutChangeEvents',
+  'bodyweightEntries',
+  'activeEditorLeases',
+  'pushSubscriptions',
   'weeklySchedulePatterns',
   'progressionRecommendations',
   'enduranceActivities',
@@ -87,10 +92,9 @@ async function loadCloudStateWithMeta(
   const records = Object.fromEntries(entries) as Partial<
     Record<CollectionKey, DocumentData[]>
   >;
-  const valueFor = <K extends CollectionKey>(key: K): AppState[K] =>
-    (records[key] as AppState[K] | undefined) ??
-    baseState?.[key] ??
-    ([] as unknown as AppState[K]);
+  const baseCollections = baseState as unknown as Record<CollectionKey, DocumentData[]>;
+  const valueFor = (key: CollectionKey): DocumentData[] =>
+    records[key] ?? baseCollections?.[key] ?? [];
 
   return migrateAppState({
     ...(baseState ?? {}),
@@ -101,6 +105,11 @@ async function loadCloudStateWithMeta(
     weeks: valueFor('weeks'),
     scheduledWorkouts: valueFor('scheduledWorkouts'),
     workoutExecutions: valueFor('workoutExecutions'),
+    workoutDrafts: valueFor('workoutDrafts'),
+    workoutChangeEvents: valueFor('workoutChangeEvents'),
+    bodyweightEntries: valueFor('bodyweightEntries'),
+    activeEditorLeases: valueFor('activeEditorLeases'),
+    pushSubscriptions: valueFor('pushSubscriptions'),
     weeklySchedulePatterns: valueFor('weeklySchedulePatterns'),
     progressionRecommendations: valueFor('progressionRecommendations'),
     preferences: meta.preferences ?? baseState?.preferences,
@@ -162,11 +171,14 @@ export async function saveCloudState(
   previousState?: AppState,
   clientId = ''
 ): Promise<void> {
+  const collections = state as unknown as Record<CollectionKey, Array<{ id: string }>>;
+  const previousCollections = previousState as unknown as
+    Record<CollectionKey, Array<{ id: string }>> | undefined;
   const changedCollections = COLLECTIONS.filter(
     (key) =>
       !recordsEqual(
-        state[key] as Array<{ id: string }>,
-        previousState?.[key] as Array<{ id: string }> | undefined
+        collections[key],
+        previousCollections?.[key]
       )
   );
 
@@ -175,8 +187,8 @@ export async function saveCloudState(
       synchronizeCollection(
         uid,
         key,
-        state[key] as Array<{ id: string }>,
-        previousState?.[key] as Array<{ id: string }> | undefined
+        collections[key],
+        previousCollections?.[key]
       )
     )
   );

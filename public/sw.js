@@ -1,4 +1,4 @@
-const CACHE_NAME = 'training-os-shell-v3';
+const CACHE_NAME = 'training-os-shell-v4';
 const BUILD_ASSETS = /* INJECT_BUILD_ASSETS */ [];
 const APP_SHELL = [
   './',
@@ -61,5 +61,39 @@ self.addEventListener('fetch', (event) => {
           return response;
         })
     )
+  );
+});
+
+self.addEventListener('push', (event) => {
+  let payload = {};
+  try {
+    payload = event.data?.json() ?? {};
+  } catch {
+    payload = { notification: { title: 'Training OS', body: event.data?.text() } };
+  }
+  const notification = payload.notification ?? payload;
+  const data = payload.data ?? {};
+  event.waitUntil(self.registration.showNotification(notification.title ?? 'Training OS', {
+    body: notification.body ?? 'Your training reminder is ready.',
+    icon: './icon-192.png',
+    badge: './icon-192.png',
+    tag: data.tag ?? 'training-os-reminder',
+    data: { route: data.route ?? '#/today' },
+  }));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const route = event.notification.data?.route ?? '#/today';
+  const destination = new URL(route, self.registration.scope).href;
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      const existing = clients[0];
+      if (existing) {
+        existing.navigate(destination);
+        return existing.focus();
+      }
+      return self.clients.openWindow(destination);
+    })
   );
 });

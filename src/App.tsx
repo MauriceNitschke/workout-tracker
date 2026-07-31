@@ -15,6 +15,12 @@ import {
 } from './lib/routes';
 import { useCloudAccount } from './hooks/useCloudAccount';
 import { createWorkoutRecommendations } from './lib/progression';
+import {
+  createWorkoutChange,
+  createWorkoutDraft,
+  createEditorLease,
+} from './lib/adaptiveWorkout';
+import { formatLocalDateISO } from './lib/weekUtils';
 import { Navigation } from './components/Navigation';
 import { Dashboard } from './components/Dashboard';
 import { Toast, ToastMessage } from './components/Toast';
@@ -100,14 +106,78 @@ export default function App() {
   const navigateLegacy = useCallback((id: string) => navigate(routeFromLegacyId(id)), [navigate]);
 
   const handleStartWorkout = (scheduledWorkoutId: string) => {
-    setState((current) => ({
-      ...current,
-      scheduledWorkouts: current.scheduledWorkouts.map((workout) =>
-        workout.id === scheduledWorkoutId ? { ...workout, status: 'Started' as const } : workout
-      ),
-      activeWorkoutId: scheduledWorkoutId,
-    }));
+    setState((current) => {
+      const workout = current.scheduledWorkouts.find((item) => item.id === scheduledWorkoutId);
+      if (!workout) return current;
+      const existingDraft = current.workoutDrafts.find(
+        (draft) => draft.scheduledWorkoutId === scheduledWorkoutId
+      );
+      if (existingDraft) return { ...current, activeWorkoutId: scheduledWorkoutId };
+      const existingExecution = current.workoutExecutions.find(
+        (execution) => execution.scheduledWorkoutId === scheduledWorkoutId
+      );
+      const draft = createWorkoutDraft(workout, current, existingExecution);
+      const lease = createEditorLease(scheduledWorkoutId);
+      return {
+        ...current,
+        scheduledWorkouts: current.scheduledWorkouts.map((item) =>
+          item.id === scheduledWorkoutId ? { ...item, status: 'Started' as const } : item
+        ),
+        workoutDrafts: [
+          ...current.workoutDrafts.filter(
+            (item) => item.scheduledWorkoutId !== scheduledWorkoutId
+          ),
+          draft,
+        ],
+        workoutChangeEvents: existingExecution
+          ? [
+              ...current.workoutChangeEvents,
+              createWorkoutChange(draft, 'workout_reopened', {
+                workoutExecutionId: existingExecution.id,
+              }),
+            ]
+          : current.workoutChangeEvents,
+        activeEditorLeases: [
+          ...current.activeEditorLeases.filter(
+            (item) => item.scheduledWorkoutId !== scheduledWorkoutId
+          ),
+          lease,
+        ],
+        activeWorkoutId: scheduledWorkoutId,
+      };
+    });
     navigate('train');
+  };
+
+  const handleMoveWorkoutToToday = (scheduledWorkoutId: string) => {
+    const today = formatLocalDateISO(new Date());
+    setState((current) => {
+      const workout = current.scheduledWorkouts.find((item) => item.id === scheduledWorkoutId);
+      if (!workout) return current;
+      const currentWeek = current.weeks.find(
+        (week) => today >= week.startDate &&
+          today <= new Date(new Date(`${week.startDate}T12:00:00`).getTime() + 6 * 86400000)
+            .toLocaleDateString('sv-SE')
+      );
+      if (!currentWeek || currentWeek.id !== workout.weekId) return current;
+      return {
+        ...current,
+        scheduledWorkouts: current.scheduledWorkouts.map((item) =>
+          item.id === scheduledWorkoutId ? { ...item, date: today } : item
+        ),
+        workoutChangeEvents: [
+          ...current.workoutChangeEvents,
+          {
+            id: `change-${Date.now()}-date`,
+            scheduledWorkoutId,
+            type: 'date_changed',
+            createdAt: new Date().toISOString(),
+            metadata: { from: workout.date ?? null, to: today },
+          },
+        ],
+      };
+    });
+    handleStartWorkout(scheduledWorkoutId);
   };
 
   const handleFinishWorkout = (execution: WorkoutExecution) => {
@@ -147,6 +217,12 @@ export default function App() {
         ...current,
         scheduledWorkouts,
         workoutExecutions,
+        workoutDrafts: current.workoutDrafts.filter(
+          (draft) => draft.scheduledWorkoutId !== execution.scheduledWorkoutId
+        ),
+        activeEditorLeases: current.activeEditorLeases.filter(
+          (lease) => lease.scheduledWorkoutId !== execution.scheduledWorkoutId
+        ),
         progressionRecommendations: [
           ...current.progressionRecommendations.filter(
             (item) => item.sourceWorkoutExecutionId !== execution.id
@@ -263,6 +339,11 @@ export default function App() {
             <WorkoutMode
               state={state}
               scheduledWorkoutId={state.activeWorkoutId}
+              syncStatus={cloud.status}
+              onUpdateState={setState}
+              onStartWorkout={handleStartWorkout}
+              onMoveWorkoutToToday={handleMoveWorkoutToToday}
+              onNavigatePlan={() => navigate('plan')}
               onFinishWorkout={handleFinishWorkout}
               onCancelWorkout={() => navigate('today')}
             />
@@ -294,6 +375,7 @@ export default function App() {
               onRetry={cloud.retrySync}
               onExport={() => exportAppStateJSON(state)}
               onImport={handleImportData}
+              onUpdateState={setState}
             />
           )}
         </React.Suspense>

@@ -1,4 +1,5 @@
 import { AppState, ScheduledWorkout, WorkoutExecution } from '../types';
+import { isWorkingSet } from './adaptiveWorkout';
 
 export interface MuscleVolumeWeekData {
   weekId: string;
@@ -63,6 +64,15 @@ export function normalizeMuscleGroup(rawName: string): string {
   if (lower.includes('core') || lower.includes('abs') || lower.includes('abdominal')) return 'Abs / Core';
   if (lower.includes('calf') || lower.includes('calves')) return 'Calves';
   return rawName;
+}
+
+function muscleContribution(
+  exercise: AppState['exercises'][number],
+  muscle: string
+): number {
+  if (exercise.primaryMuscles.some((name) => normalizeMuscleGroup(name) === muscle)) return 1;
+  if (exercise.secondaryMuscles.some((name) => normalizeMuscleGroup(name) === muscle)) return 0.5;
+  return 0;
 }
 
 /**
@@ -140,12 +150,7 @@ export function calculateMuscleVolumeAnalytics(state: AppState): {
         sw.plannedExercises.forEach((pe) => {
           const ex = exerciseMap.get(pe.exerciseId);
           if (!ex) return;
-          const matches =
-            ex.primaryMuscles.some((m) => normalizeMuscleGroup(m) === muscle) ||
-            ex.secondaryMuscles.some((m) => normalizeMuscleGroup(m) === muscle);
-          if (matches) {
-            plannedSets += pe.plannedSets.length;
-          }
+          plannedSets += pe.plannedSets.length * muscleContribution(ex, muscle);
         });
 
         // Completed sets for this muscle
@@ -154,18 +159,16 @@ export function calculateMuscleVolumeAnalytics(state: AppState): {
           exec.exerciseExecutions.forEach((ee) => {
             const ex = exerciseMap.get(ee.exerciseId);
             if (!ex) return;
-            const matches =
-              ex.primaryMuscles.some((m) => normalizeMuscleGroup(m) === muscle) ||
-              ex.secondaryMuscles.some((m) => normalizeMuscleGroup(m) === muscle);
-            if (matches) {
-              const completedInEx = ee.setExecutions.filter((se) => se.completed).length;
-              completedSets += completedInEx;
-            }
+            const contribution = muscleContribution(ex, muscle);
+            const completedInEx = ee.setExecutions.filter(isWorkingSet).length;
+            completedSets += completedInEx * contribution;
           });
         }
       });
 
-      const pct = plannedSets > 0 ? Math.round((completedSets / plannedSets) * 100) : 100;
+      const pct = plannedSets > 0
+        ? Math.min(100, Math.round((completedSets / plannedSets) * 100))
+        : completedSets > 0 ? 100 : 0;
 
       weeklyHistory.push({
         weekId: week.id,
@@ -201,7 +204,9 @@ export function calculateMuscleVolumeAnalytics(state: AppState): {
 
     const curPlanned = curWeekData ? curWeekData.plannedSets : 0;
     const curCompleted = curWeekData ? curWeekData.completedSets : 0;
-    const completionPct = curPlanned > 0 ? Math.round((curCompleted / curPlanned) * 100) : (curCompleted > 0 ? 100 : 0);
+    const completionPct = curPlanned > 0
+      ? Math.min(100, Math.round((curCompleted / curPlanned) * 100))
+      : (curCompleted > 0 ? 100 : 0);
 
     summaries.push({
       muscleGroup: muscle,

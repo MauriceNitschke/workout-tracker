@@ -1,5 +1,6 @@
 import { AppState, Exercise, ScheduledWorkout } from '../types';
 import { calculateE1RM } from './prCalculator';
+import { isPrEligibleSet, isWorkingSet, volumeForSet } from './adaptiveWorkout';
 
 export type TimeFilter = '1M' | '3M' | '6M' | '1Y' | 'ALL';
 
@@ -131,7 +132,7 @@ export function getExerciseAnalyticsReport(
     if (!sw) return;
 
     const parentWeek = weekMap.get(sw.weekId);
-    const dateStr = sw.date || (exec.startedAt ? exec.startedAt.slice(0, 10) : '2026-06-01');
+    const dateStr = sw.date || exec.startedAt.slice(0, 10);
 
     if (dateStr < cutoffDateStr) return; // Time filter
 
@@ -152,7 +153,7 @@ export function getExerciseAnalyticsReport(
       let dayBestSet = { weight: 0, reps: 0, e1rm: 0 };
 
       ee.setExecutions.forEach((se) => {
-        if (!se.completed) return;
+        if (!isWorkingSet(se)) return;
 
         dayCompletedSets++;
         totalSetsAllTime++;
@@ -165,11 +166,12 @@ export function getExerciseAnalyticsReport(
           dayRirCount += 1;
         }
 
-        const setVolume = se.weight * se.reps;
+        const setVolume = volumeForSet(se);
         dayTotalVolume += setVolume;
         totalVolumeAllTime += setVolume;
 
-        const e1rm = calculateE1RM(se.weight, se.reps);
+        const systemLoad = se.totalLoadKg ?? se.weight;
+        const e1rm = calculateE1RM(systemLoad, se.reps);
 
         if (se.weight > dayMaxWeight) dayMaxWeight = se.weight;
         if (e1rm > dayMaxE1RM) dayMaxE1RM = e1rm;
@@ -191,6 +193,8 @@ export function getExerciseAnalyticsReport(
         if (e1rm > bestSetObj.e1rm) {
           bestSetObj = { weight: se.weight, reps: se.reps, e1rm };
         }
+
+        if (!isPrEligibleSet(se)) return;
 
         // Expanded PR definitions
         // 1. Highest Weight
